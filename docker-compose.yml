@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: packages/api/Dockerfile
     ports:
-      - "3000:3000"
+      - "${API_PORT:-3000}:3000"
     volumes:
       - certpulse-data:/app/data
     environment:
@@ -20,6 +20,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   web:
@@ -27,7 +28,7 @@ services:
       context: .
       dockerfile: packages/web/Dockerfile
     ports:
-      - "5173:80"
+      - "${WEB_PORT:-5173}:80"
     depends_on:
       api:
         condition: service_healthy
