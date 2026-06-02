@@ -1,0 +1,32 @@
+{
+  "name": "@certpulse/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.59.20",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.0.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0-beta.7",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.3",
+    "tailwindcss": "^4.0.0-beta.7",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.0"
+  }
+}
