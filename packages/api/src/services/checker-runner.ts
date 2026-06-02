@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { getDb } from "../db/index.js";
+import { getDb, type DB } from "../db/index.js";
 import { checks, domains } from "../db/schema.js";
-import { checkSSL, type CheckResult } from "./checker.js";
+import { checkSSL } from "./checker.js";
 import { processCheckAlert } from "./alerter.js";
 
 export interface RunCheckOutcome {
@@ -15,13 +15,22 @@ export interface RunCheckOutcome {
   error?: string | null;
 }
 
+export interface RunCheckOptions {
+  rejectUnauthorized?: boolean;
+  timeoutMs?: number;
+}
+
 export async function runCheckForDomain(
   domainId: number,
   hostname: string,
-  port = 443
+  port = 443,
+  db: DB = getDb(),
+  options: RunCheckOptions = {}
 ): Promise<RunCheckOutcome> {
-  const result = await checkSSL(hostname, port);
-  const db = getDb();
+  const result = await checkSSL(hostname, port, {
+    rejectUnauthorized: options.rejectUnauthorized,
+    timeoutMs: options.timeoutMs,
+  });
 
   const inserted = db
     .insert(checks)
@@ -56,6 +65,7 @@ export async function runCheckForDomain(
       checkId,
       domainId,
       daysRemaining: result.daysRemaining,
+      db,
     });
     if (alert) outcome.alertStatus = alert.status;
   } catch (err) {
@@ -65,8 +75,11 @@ export async function runCheckForDomain(
   return outcome;
 }
 
-export async function runCheckForDomainById(domainId: number): Promise<RunCheckOutcome> {
-  const db = getDb();
+export async function runCheckForDomainById(
+  domainId: number,
+  db: DB = getDb(),
+  options: RunCheckOptions = {}
+): Promise<RunCheckOutcome> {
   const row = db
     .select()
     .from(domains)
@@ -76,11 +89,13 @@ export async function runCheckForDomainById(domainId: number): Promise<RunCheckO
   if (!row) {
     throw new Error(`Domain ${domainId} not found`);
   }
-  return runCheckForDomain(row.id, row.hostname, row.port);
+  return runCheckForDomain(row.id, row.hostname, row.port, db, options);
 }
 
-export async function runChecksForAllEnabledDomains(): Promise<RunCheckOutcome[]> {
-  const db = getDb();
+export async function runChecksForAllEnabledDomains(
+  db: DB = getDb(),
+  options: RunCheckOptions = {}
+): Promise<RunCheckOutcome[]> {
   const rows = db
     .select()
     .from(domains)
@@ -89,7 +104,7 @@ export async function runChecksForAllEnabledDomains(): Promise<RunCheckOutcome[]
   const out: RunCheckOutcome[] = [];
   for (const row of rows) {
     try {
-      const outcome = await runCheckForDomain(row.id, row.hostname, row.port);
+      const outcome = await runCheckForDomain(row.id, row.hostname, row.port, db, options);
       out.push(outcome);
     } catch (err) {
       out.push({

@@ -1,4 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
+import { type DB, getDb } from "../db/index.js";
 import { runChecksForAllEnabledDomains } from "./checker-runner.js";
 
 let task: ScheduledTask | null = null;
@@ -23,18 +24,24 @@ export function buildCronExpression(intervalMinutes: number): string {
   return "0 * * * *";
 }
 
-export async function tickChecks(): Promise<{ ran: number }> {
+export async function tickChecks(
+  db: DB = getDb(),
+  options: { rejectUnauthorized?: boolean; timeoutMs?: number } = {}
+): Promise<{ ran: number }> {
   if (running) return { ran: 0 };
   running = true;
   try {
-    const results = await runChecksForAllEnabledDomains();
+    const results = await runChecksForAllEnabledDomains(db, options);
     return { ran: results.length };
   } finally {
     running = false;
   }
 }
 
-export function startScheduler(): { task: ScheduledTask; intervalMinutes: number; expression: string } {
+export function startScheduler(
+  db: DB = getDb(),
+  options: { rejectUnauthorized?: boolean; timeoutMs?: number } = {}
+): { task: ScheduledTask; intervalMinutes: number; expression: string } {
   if (task) {
     return {
       task,
@@ -48,7 +55,7 @@ export function startScheduler(): { task: ScheduledTask; intervalMinutes: number
     throw new Error(`Invalid cron expression: ${expression}`);
   }
   task = cron.schedule(expression, () => {
-    tickChecks().catch((err) => {
+    tickChecks(db, options).catch((err) => {
       console.error("[scheduler] tick failed:", err);
     });
   });
