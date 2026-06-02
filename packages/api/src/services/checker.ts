@@ -150,7 +150,7 @@ export function checkSSL(
         notAfter: null,
         daysRemaining: null,
         rawPem: null,
-        error: err.message,
+        error: err.message || err.code || "TLS connection failed",
       });
     });
 
