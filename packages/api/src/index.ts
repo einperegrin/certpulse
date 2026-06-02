@@ -1,24 +1,25 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getDb, closeDb } from "./db/index.js";
+import { getDb, closeDb, type DB } from "./db/index.js";
 import { runSqlMigrations } from "./db/sqlmigrate.js";
-import { domainsRouter } from "./routes/domains.js";
-import { checksRouter } from "./routes/checks.js";
-import { dashboardRouter } from "./routes/dashboard.js";
+import { createDomainsRouter } from "./routes/domains.js";
+import { createChecksRouter } from "./routes/checks.js";
+import { createDashboardRouter } from "./routes/dashboard.js";
 import { startScheduler, stopScheduler, getCheckIntervalMinutes } from "./services/scheduler.js";
 import { recentAlerts } from "./services/alerter.js";
 
-export function createApp() {
+export function createApp(options?: { db?: DB }) {
+  const db = options?.db ?? getDb();
   const app = new Hono();
 
   app.use("*", cors({ origin: "*" }));
 
   app.get("/health", (c) => c.json({ ok: true, ts: new Date().toISOString() }));
 
-  app.route("/api/domains", domainsRouter);
-  app.route("/api/checks", checksRouter);
-  app.route("/api/dashboard", dashboardRouter);
+  app.route("/api/domains", createDomainsRouter(db));
+  app.route("/api/checks", createChecksRouter(db));
+  app.route("/api/dashboard", createDashboardRouter(db));
 
   app.get("/api/alerts", (c) => {
     const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 200);

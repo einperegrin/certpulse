@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql, type SQL } from "drizzle-orm";
 import { Resend } from "resend";
-import { getDb } from "../db/index.js";
+import { type DB, getDb } from "../db/index.js";
 import { alerts, checks, domains } from "../db/schema.js";
 
 export type AlertLevel = "warning" | "urgent" | "critical" | "emergency";
@@ -84,9 +84,9 @@ export function getDefaultSender(): AlertEmailSender {
 function wasRecentlyAlerted(
   domainId: number,
   level: AlertLevel,
-  withinHours: number
+  withinHours: number,
+  db: DB
 ): boolean {
-  const db = getDb();
   const cutoff = new Date(Date.now() - withinHours * 3600 * 1000).toISOString();
   const row = db
     .select({ id: alerts.id })
@@ -107,6 +107,7 @@ export interface ProcessCheckAlertInput {
   checkId: number;
   domainId: number;
   daysRemaining: number | null;
+  db?: DB;
 }
 
 export async function processCheckAlert(
@@ -115,11 +116,11 @@ export async function processCheckAlert(
   const levelInfo = determineAlertLevel(input.daysRemaining);
   if (!levelInfo) return null;
 
-  if (wasRecentlyAlerted(input.domainId, levelInfo.level, 24)) {
+  const db = input.db ?? getDb();
+  if (wasRecentlyAlerted(input.domainId, levelInfo.level, 24, db)) {
     return { level: levelInfo.level, status: "deduped" };
   }
 
-  const db = getDb();
   const domain = db
     .select()
     .from(domains)

@@ -26,6 +26,7 @@ export type CheckResult =
 
 export interface CheckOptions {
   timeoutMs?: number;
+  rejectUnauthorized?: boolean;
 }
 
 function computeDaysRemaining(notAfter: Date): number {
@@ -67,7 +68,14 @@ export function checkSSL(
       resolve(result);
     };
 
-    const socket = connect(port, hostname, { servername: hostname }, () => {
+    const socket = connect(
+      port,
+      hostname,
+      {
+        servername: hostname,
+        rejectUnauthorized: opts.rejectUnauthorized ?? true,
+      },
+      () => {
       try {
         const cert = socket.getPeerCertificate(true);
         if (!cert || Object.keys(cert).length === 0) {
