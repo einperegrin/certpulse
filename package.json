@@ -1,0 +1,22 @@
+{
+  "name": "certpulse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted SSL expiry monitor with email alerts",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=@certpulse/api",
+    "dev:web": "npm run dev --workspace=@certpulse/web",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace=@certpulse/api",
+    "db:migrate": "npm run db:migrate --workspace=@certpulse/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
