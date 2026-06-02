@@ -42,7 +42,7 @@ function issuerOrgName(issuer: PeerCertificate["issuer"]): string | null {
 }
 
 function pemFromRaw(raw: Buffer | undefined): string {
-  if (!raw) return "";
+  if (!raw || !Buffer.isBuffer(raw) || raw.length === 0) return "";
   const b64 = raw.toString("base64");
   const lines = b64.match(/.{1,64}/g)?.join("\n") ?? b64;
   return `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----\n`;
