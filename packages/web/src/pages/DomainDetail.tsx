@@ -6,6 +6,7 @@ import {
   Trash2,
   Loader2,
   ShieldCheck,
+  Globe,
 } from "lucide-react";
 import {
   Card,
@@ -23,6 +24,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { StatusBadge } from "../components/StatusBadge";
+import { ChannelsEditor } from "../components/ChannelsEditor";
 import { api } from "../lib/api";
 import { formatDate, formatDistanceToNowStrict } from "../lib/format";
 
@@ -77,6 +79,7 @@ export function DomainDetail() {
   const { domain, checks } = detail.data;
   const latest = checks[0];
   const days = latest?.daysRemaining ?? null;
+  const domainDays = latest?.domainExpiresDaysRemaining ?? null;
 
   return (
     <div className="space-y-6">
@@ -122,15 +125,25 @@ export function DomainDetail() {
             {domain.hostname}
             <span className="ml-1 text-slate-400">:{domain.port}</span>
           </h1>
-          <div className="mt-1 flex items-center gap-2 text-sm text-slate-500">
-            <StatusBadge daysRemaining={days} />
-            <span>
-              {days === null || days === undefined
-                ? "Never checked"
-                : days > 0
-                ? `${days} days remaining`
-                : "Expired"}
+          <div className="mt-1 flex items-center gap-3 text-sm text-slate-500">
+            <span className="flex items-center gap-1">
+              <StatusBadge daysRemaining={days} />
+              <span>
+                {days === null || days === undefined
+                  ? "Cert never checked"
+                  : days > 0
+                  ? `${days} days remaining`
+                  : "Cert expired"}
+              </span>
             </span>
+            {domainDays !== null && domainDays !== undefined && (
+              <span className="flex items-center gap-1">
+                <Globe className="h-3 w-3 text-slate-400" />
+                {domainDays > 0
+                  ? `Domain expires in ${domainDays} days`
+                  : "Domain expired"}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -138,7 +151,9 @@ export function DomainDetail() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Certificate</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4" /> TLS Certificate
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <Row label="Issuer" value={latest?.issuer ?? "—"} />
@@ -166,6 +181,48 @@ export function DomainDetail() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-4 w-4" /> Domain Registration
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <Row label="Registrar" value={latest?.domainRegistrar ?? "—"} />
+            <Row
+              label="Expires"
+              value={
+                latest?.domainExpiresAt
+                  ? `${formatDate(latest.domainExpiresAt)} (${formatDistanceToNowStrict(
+                      new Date(latest.domainExpiresAt)
+                    )})`
+                  : "—"
+              }
+            />
+            <Row
+              label="Days Remaining"
+              value={
+                domainDays === null || domainDays === undefined
+                  ? "—"
+                  : String(domainDays)
+              }
+            />
+            {latest?.domainRegistrarError && (
+              <p className="mt-2 rounded-md bg-rose-50 p-2 text-xs text-rose-700">
+                {latest.domainRegistrarError}
+              </p>
+            )}
+            {!latest?.domainRegistrarError &&
+              (latest?.domainExpiresAt === null || latest?.domainExpiresAt === undefined) && (
+                <p className="mt-2 rounded-md bg-slate-50 p-2 text-xs text-slate-600">
+                  WHOIS/RDAP not yet resolved — re-run "Check Now" to retry.
+                </p>
+              )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
             <CardTitle>Check History (last 10)</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -176,7 +233,8 @@ export function DomainDetail() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>When</TableHead>
-                    <TableHead className="text-right">Days</TableHead>
+                    <TableHead className="text-right">Cert Days</TableHead>
+                    <TableHead className="text-right">Domain Days</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -188,6 +246,9 @@ export function DomainDetail() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {c.daysRemaining ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {c.domainExpiresDaysRemaining ?? "—"}
                       </TableCell>
                       <TableCell>
                         {c.error ? (
@@ -203,6 +264,8 @@ export function DomainDetail() {
             )}
           </CardContent>
         </Card>
+
+        <ChannelsEditor domainId={domainId} />
       </div>
     </div>
   );
