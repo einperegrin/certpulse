@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryDb, type DB } from "../db/index.js";
 import { runSqlMigrations } from "../db/sqlmigrate.js";
-import { checks, domains } from "../db/schema.js";
+import { checks, domains, alertChannels } from "../db/schema.js";
 import Database from "better-sqlite3";
 import {
   determineAlertLevel,
@@ -294,5 +294,51 @@ describe("alert dispatch (multi-channel + dedup)", () => {
       db,
     });
     expect(out2.cert?.every((r) => r.status === "deduped")).toBe(true);
+  });
+
+  it("marks channels with missing required config as 'skipped' (not 'failed')", async () => {
+    // Insert domain + a webhook channel with no url (required config missing)
+    const [domain] = db.insert(domains).values({ hostname: "skipped.example", port: 443 }).returning().all();
+    db.insert(alertChannels).values({
+      domainId: domain.id,
+      channel: "webhook",
+      enabled: true,
+      config: JSON.stringify({}), // missing required 'url'
+    }).run();
+
+    // Stub the webhook sender so we can verify it's NEVER invoked
+    const inbox: unknown[] = [];
+    setChannelSender("webhook", {
+      channel: "webhook",
+      send: async (content, cfg) => {
+        inbox.push({ content, cfg });
+        return { id: "should-not-fire" }; // no error
+      },
+    });
+    // Make sure email default path doesn't run (no ALERT_EMAIL_TO env in test)
+    // — its absence means `defaultEmailChannel` returns null, so dispatchList
+    // only contains our webhook channel.
+
+    const c1 = db.insert(checks).values({
+      domainId: domain.id, valid: true, daysRemaining: 5,
+    }).returning({ id: checks.id }).all()[0]!;
+
+    const out = await processCheckAlert({
+      checkId: c1.id,
+      domainId: domain.id,
+      certDaysRemaining: 5,
+      domainDaysRemaining: null,
+      db,
+    });
+
+    expect(out.cert).not.toBeNull();
+    // Find our webhook result (email default may also be in the list depending on env)
+    const webhookResult = out.cert!.find((r) => r.channel === "webhook");
+    expect(webhookResult).toBeDefined();
+    expect(webhookResult!.status).toBe("skipped");
+    expect(webhookResult!.error).toMatch(/Missing required config: url/);
+    expect(inbox).toHaveLength(0); // sender never invoked
+
+    resetChannelSender("webhook");
   });
 });

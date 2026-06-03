@@ -225,16 +225,23 @@ export function ChannelsEditor({ domainId }: { domainId: number }) {
 
 function describeConfig(c: AlertChannel): string {
   const cfg = c.config;
+  // Safe getter: c.config is Record<string, unknown>, so we can't assume
+  // any value is a string without a runtime check. These helpers avoid
+  // unsafe `unknown` access in template strings.
+  const getStr = (key: string): string | undefined => {
+    const v = cfg[key];
+    return typeof v === "string" && v.length > 0 ? v : undefined;
+  };
   switch (c.channel) {
     case "email":
-      return cfg.to ? `→ ${cfg.to}` : "default recipient";
+      return getStr("to") ? `→ ${getStr("to")}` : "default recipient";
     case "webhook":
-      return cfg.url ? `→ ${cfg.url}` : "no URL";
+      return getStr("url") ? `→ ${getStr("url")}` : "no URL";
     case "telegram":
-      return cfg.chatId ? `chat ${cfg.chatId}` : "no chat id";
+      return getStr("chatId") ? `chat ${getStr("chatId")}` : "no chat id";
     case "slack":
-      return cfg.url ? "configured" : "no URL";
+      return getStr("url") ? "configured" : "no URL";
     case "ntfy":
-      return cfg.topic ? `topic ${cfg.topic}` : "no topic";
+      return getStr("topic") ? `topic ${getStr("topic")}` : "no topic";
   }
 }

@@ -195,6 +195,36 @@ async function dispatchOne(
       cfg = {};
     }
     const sender = getChannelSender(channelName);
+    // Pre-flight: channels with missing required config are "skipped", not "failed".
+    // A failed delivery means the sender was invoked but returned an error.
+    // A skipped channel means we never tried to send because config was invalid.
+    //
+    // Special case: email uses a synthetic default channel with empty config
+    // and pulls the recipient from `ALERT_EMAIL_TO` env. The sender handles
+    // that fallback, so we don't pre-flight email.
+    if (channelName !== "email") {
+      const requiredKeys: Record<string, string> = {
+        webhook: "url",
+        telegram: "chatId",
+        slack: "url",
+        ntfy: "topic",
+      };
+      const requiredKey = requiredKeys[channelName];
+      if (requiredKey && (cfg[requiredKey] === undefined || cfg[requiredKey] === null || cfg[requiredKey] === "")) {
+        results.push({
+          channel: channelName, source, level: level.level,
+          status: "skipped",
+          error: `Missing required config: ${requiredKey}`,
+        });
+        recordAlertRow(db, {
+          domainId, checkId, source,
+          channel: channelName, level: level.level,
+          status: "skipped",
+          error: `Missing required config: ${requiredKey}`,
+        });
+        continue;
+      }
+    }
     const sendRes = await sender.send(content, cfg, process.env);
     if (sendRes.error) {
       results.push({ channel: channelName, source, level: level.level, status: "failed", error: sendRes.error });
@@ -229,7 +259,7 @@ interface RecordAlertRowInput {
   source: AlertSource;
   channel: ChannelName;
   level: string;
-  status: "sent" | "failed" | "deduped";
+  status: "sent" | "failed" | "skipped" | "deduped";
   messageId?: string;
   error?: string;
 }
