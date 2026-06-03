@@ -7,7 +7,7 @@ import {
 } from "../components/ui/card";
 import { DomainTable } from "../components/DomainTable";
 import { api, type DomainRow } from "../lib/api";
-import { Activity, AlertCircle, ShieldCheck, XCircle } from "lucide-react";
+import { Activity, AlertCircle, Globe, ShieldCheck, XCircle } from "lucide-react";
 
 interface StatCardProps {
   label: string;
@@ -70,38 +70,65 @@ export function Dashboard() {
           Dashboard
         </h1>
         <p className="text-sm text-slate-500">
-          Self-hosted SSL certificate expiry monitoring.
+          Self-hosted SSL certificate and domain expiry monitoring.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Total Domains"
-          value={summary?.total ?? rows.length}
-          hint="Being monitored"
-          icon={<Activity className="h-5 w-5" />}
-        />
-        <StatCard
-          label="Expiring Soon"
-          value={summary?.expiringSoon ?? 0}
-          hint="≤ 30 days remaining"
-          tone="warning"
-          icon={<AlertCircle className="h-5 w-5" />}
-        />
-        <StatCard
-          label="Expired"
-          value={summary?.expired ?? 0}
-          hint="Cert past expiry"
-          tone="danger"
-          icon={<XCircle className="h-5 w-5" />}
-        />
-        <StatCard
-          label="Healthy"
-          value={summary?.healthy ?? 0}
-          hint="> 30 days remaining"
-          tone="success"
-          icon={<ShieldCheck className="h-5 w-5" />}
-        />
+      <div>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          TLS certificates
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Total Domains"
+            value={summary?.total ?? rows.length}
+            hint="Being monitored"
+            icon={<Activity className="h-5 w-5" />}
+          />
+          <StatCard
+            label="Cert Expiring Soon"
+            value={summary?.expiringSoon ?? 0}
+            hint="≤ 30 days remaining"
+            tone="warning"
+            icon={<AlertCircle className="h-5 w-5" />}
+          />
+          <StatCard
+            label="Cert Expired"
+            value={summary?.expired ?? 0}
+            hint="Cert past expiry"
+            tone="danger"
+            icon={<XCircle className="h-5 w-5" />}
+          />
+          <StatCard
+            label="Healthy"
+            value={summary?.healthy ?? 0}
+            hint="> 30 days remaining"
+            tone="success"
+            icon={<ShieldCheck className="h-5 w-5" />}
+          />
+        </div>
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Domain registration
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
+          <StatCard
+            label="Domain Expiring Soon"
+            value={summary?.domainExpiringSoon ?? 0}
+            hint="≤ 30 days remaining"
+            tone="warning"
+            icon={<Globe className="h-5 w-5" />}
+          />
+          <StatCard
+            label="Domain Expired"
+            value={summary?.domainExpired ?? 0}
+            hint="Registration past expiry"
+            tone="danger"
+            icon={<Globe className="h-5 w-5" />}
+          />
+        </div>
       </div>
 
       <Card>

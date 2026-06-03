@@ -22,6 +22,10 @@ export interface Check {
   daysRemaining: number | null;
   error: string | null;
   rawPem: string | null;
+  domainExpiresAt: string | null;
+  domainExpiresDaysRemaining: number | null;
+  domainRegistrar: string | null;
+  domainRegistrarError: string | null;
 }
 
 export interface DomainRow {
@@ -35,7 +39,21 @@ export interface DomainRow {
     issuerOrg: string | null;
     error: string | null;
     checkedAt: string;
+    domainExpiresAt: string | null;
+    domainExpiresDaysRemaining: number | null;
+    domainRegistrar: string | null;
+    domainRegistrarError: string | null;
   } | null;
+}
+
+export interface AlertChannel {
+  id: number;
+  domainId: number;
+  channel: "email" | "webhook" | "telegram" | "slack" | "ntfy";
+  enabled: boolean;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DashboardSummary {
@@ -44,6 +62,8 @@ export interface DashboardSummary {
   expired: number;
   healthy: number;
   unchecked: number;
+  domainExpiringSoon: number;
+  domainExpired: number;
   domains: DomainRow[];
 }
 
@@ -88,6 +108,21 @@ export const api = {
     const q = domainId ? `?domain_id=${domainId}` : "";
     return request<{ checks: Check[] }>(`/api/checks${q}`);
   },
+  listChannels: (domainId: number) =>
+    request<{ channels: AlertChannel[] }>(`/api/domains/${domainId}/channels`),
+  upsertChannel: (
+    domainId: number,
+    channel: AlertChannel["channel"],
+    body: { enabled?: boolean; config?: Record<string, unknown> }
+  ) =>
+    request<{ channel: AlertChannel }>(`/api/domains/${domainId}/channels`, {
+      method: "POST",
+      body: JSON.stringify({ channel, ...body }),
+    }),
+  deleteChannel: (domainId: number, id: number) =>
+    request<{ ok: boolean }>(`/api/domains/${domainId}/channels/${id}`, {
+      method: "DELETE",
+    }),
   config: () =>
     request<{
       checkIntervalMinutes: number;
