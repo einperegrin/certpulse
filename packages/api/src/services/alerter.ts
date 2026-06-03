@@ -1,9 +1,14 @@
-import { and, desc, eq, gte, sql, type SQL } from "drizzle-orm";
-import { Resend } from "resend";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { type DB, getDb } from "../db/index.js";
-import { alerts, checks, domains } from "../db/schema.js";
+import { alertChannels, alerts, checks, domains, type AlertChannel } from "../db/schema.js";
+import {
+  type AlertContent,
+  type ChannelName,
+  getChannelSender,
+} from "./channels.js";
 
 export type AlertLevel = "warning" | "urgent" | "critical" | "emergency";
+export type AlertSource = "cert" | "domain";
 
 export interface AlertLevelInfo {
   level: AlertLevel;
@@ -12,13 +17,16 @@ export interface AlertLevelInfo {
 }
 
 const ALERT_LEVELS: AlertLevelInfo[] = [
-  { level: "emergency", subject: "CERTIFICATE EXPIRED", threshold: 0 },
+  { level: "emergency", subject: "EXPIRED", threshold: 0 },
   { level: "critical", subject: "EXPIRES TOMORROW", threshold: 1 },
   { level: "urgent", subject: "Expires in 7 days", threshold: 7 },
   { level: "warning", subject: "Expires in 30 days", threshold: 30 },
 ];
 
-export function determineAlertLevel(daysRemaining: number | null): AlertLevelInfo | null {
+const SUBJECT_PREFIX_CERT = "[CertPulse]";
+const SUBJECT_PREFIX_DOMAIN = "[CertPulse Domain]";
+
+export function determineAlertLevel(daysRemaining: number | null | undefined): AlertLevelInfo | null {
   if (daysRemaining === null || daysRemaining === undefined) return null;
   if (daysRemaining <= 0) return ALERT_LEVELS[0];
   if (daysRemaining <= 1) return ALERT_LEVELS[1];
@@ -27,62 +35,32 @@ export function determineAlertLevel(daysRemaining: number | null): AlertLevelInf
   return null;
 }
 
-export interface AlertSendResult {
+export interface ChannelDispatchResult {
+  channel: ChannelName;
+  source: AlertSource;
   level: AlertLevel;
   status: "sent" | "failed" | "skipped" | "deduped";
   messageId?: string;
   error?: string;
 }
 
-export interface AlertEmailPayload {
-  from: string;
-  to: string;
-  subject: string;
-  text: string;
+export interface ProcessCheckAlertInput {
+  checkId: number;
+  domainId: number;
+  certDaysRemaining: number | null;
+  domainDaysRemaining: number | null;
+  db?: DB;
 }
 
-export interface AlertEmailSender {
-  send(payload: AlertEmailPayload): Promise<{ id?: string; error?: string }>;
-}
-
-class ResendEmailSender implements AlertEmailSender {
-  private resend: Resend | null = null;
-  constructor(apiKey: string | undefined) {
-    if (apiKey) this.resend = new Resend(apiKey);
-  }
-  async send(payload: AlertEmailPayload): Promise<{ id?: string; error?: string }> {
-    if (!this.resend) {
-      console.log(`[alert:log] from=${payload.from} to=${payload.to} subject="${payload.subject}"`);
-      console.log(payload.text);
-      return { id: `log-${Date.now()}` };
-    }
-    try {
-      const { data, error } = await this.resend.emails.send({
-        from: payload.from,
-        to: payload.to,
-        subject: payload.subject,
-        text: payload.text,
-      });
-      if (error) return { error: error.message ?? String(error) };
-      return { id: data?.id };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) };
-    }
-  }
-}
-
-let _sender: AlertEmailSender | null = null;
-export function setAlertEmailSender(sender: AlertEmailSender): void {
-  _sender = sender;
-}
-export function getDefaultSender(): AlertEmailSender {
-  if (_sender) return _sender;
-  _sender = new ResendEmailSender(process.env.RESEND_API_KEY);
-  return _sender;
+export interface ProcessCheckAlertOutput {
+  cert: ChannelDispatchResult[] | null;
+  domain: ChannelDispatchResult[] | null;
 }
 
 function wasRecentlyAlerted(
   domainId: number,
+  source: AlertSource,
+  channel: ChannelName,
   level: AlertLevel,
   withinHours: number,
   db: DB
@@ -94,6 +72,8 @@ function wasRecentlyAlerted(
     .where(
       and(
         eq(alerts.domainId, domainId),
+        eq(alerts.source, source),
+        eq(alerts.channel, channel),
         eq(alerts.level, level),
         gte(alerts.createdAt, cutoff)
       )
@@ -103,82 +83,233 @@ function wasRecentlyAlerted(
   return row.length > 0;
 }
 
-export interface ProcessCheckAlertInput {
-  checkId: number;
-  domainId: number;
-  daysRemaining: number | null;
-  db?: DB;
+function channelsForDomain(domainId: number, db: DB): AlertChannel[] {
+  return db
+    .select()
+    .from(alertChannels)
+    .where(and(eq(alertChannels.domainId, domainId), eq(alertChannels.enabled, true)))
+    .all();
 }
 
+/**
+ * Returns true if the email channel should fire for this domain, even when no
+ * explicit alert_channels row exists. This preserves the v0 behaviour: a
+ * domain with `ALERT_EMAIL_TO` set globally still gets email alerts.
+ */
+function defaultEmailChannel(domainId: number, db: DB): AlertChannel | null {
+  const existing = db
+    .select()
+    .from(alertChannels)
+    .where(and(eq(alertChannels.domainId, domainId), eq(alertChannels.channel, "email")))
+    .limit(1)
+    .all()[0];
+  if (existing) return existing.enabled ? existing : null;
+  // No explicit row — use global env as a synthetic, always-enabled channel.
+  if (process.env.ALERT_EMAIL_TO) {
+    return {
+      id: 0,
+      domainId,
+      channel: "email",
+      enabled: true,
+      config: "{}",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  return null;
+}
+
+function buildAlertText(
+  source: AlertSource,
+  domain: { hostname: string; port: number },
+  level: AlertLevelInfo,
+  daysRemaining: number,
+  checkId: number
+): string {
+  const lines: string[] = [
+    `CertPulse ${source === "domain" ? "Domain" : "SSL"} Alert`,
+    ``,
+    `Domain: ${domain.hostname}:${domain.port}`,
+    source === "domain"
+      ? `Days until registration expires: ${daysRemaining}`
+      : `Days remaining: ${daysRemaining}`,
+    `Status: ${level.subject}`,
+    ``,
+    `Check #${checkId} recorded at ${new Date().toISOString()}`,
+  ];
+  return lines.join("\n");
+}
+
+function buildAlertSubject(
+  source: AlertSource,
+  domain: { hostname: string },
+  level: AlertLevelInfo
+): string {
+  const prefix = source === "domain" ? SUBJECT_PREFIX_DOMAIN : SUBJECT_PREFIX_CERT;
+  return `${prefix} ${domain.hostname}: ${level.subject}`;
+}
+
+async function dispatchOne(
+  source: AlertSource,
+  domain: { hostname: string; port: number },
+  level: AlertLevelInfo,
+  daysRemaining: number,
+  checkId: number,
+  domainId: number,
+  db: DB
+): Promise<ChannelDispatchResult[]> {
+  const results: ChannelDispatchResult[] = [];
+  // Build the dispatch list: per-domain channels + default email if none set.
+  const explicit = channelsForDomain(domainId, db).filter((c) => c.channel !== "email");
+  const defaultEmail = defaultEmailChannel(domainId, db);
+  const dispatchList: AlertChannel[] = [...explicit];
+  if (defaultEmail) dispatchList.push(defaultEmail);
+
+  const content: AlertContent = {
+    subject: buildAlertSubject(source, domain, level),
+    text: buildAlertText(source, domain, level, daysRemaining, checkId),
+    level: level.level,
+    hostname: `${domain.hostname}:${domain.port}`,
+    daysRemaining,
+    source,
+  };
+
+  for (const ch of dispatchList) {
+    const channelName = ch.channel as ChannelName;
+    if (wasRecentlyAlerted(domainId, source, channelName, level.level, 24, db)) {
+      results.push({ channel: channelName, source, level: level.level, status: "deduped" });
+      recordAlertRow(db, {
+        domainId,
+        checkId,
+        source,
+        channel: channelName,
+        level: level.level,
+        status: "deduped",
+      });
+      continue;
+    }
+    let cfg: Record<string, unknown> = {};
+    try {
+      cfg = ch.config ? (JSON.parse(ch.config) as Record<string, unknown>) : {};
+    } catch {
+      cfg = {};
+    }
+    const sender = getChannelSender(channelName);
+    const sendRes = await sender.send(content, cfg, process.env);
+    if (sendRes.error) {
+      results.push({ channel: channelName, source, level: level.level, status: "failed", error: sendRes.error });
+      recordAlertRow(db, {
+        domainId,
+        checkId,
+        source,
+        channel: channelName,
+        level: level.level,
+        status: "failed",
+        error: sendRes.error,
+      });
+    } else {
+      results.push({ channel: channelName, source, level: level.level, status: "sent", messageId: sendRes.id });
+      recordAlertRow(db, {
+        domainId,
+        checkId,
+        source,
+        channel: channelName,
+        level: level.level,
+        status: "sent",
+        messageId: sendRes.id,
+      });
+    }
+  }
+  return results;
+}
+
+interface RecordAlertRowInput {
+  domainId: number;
+  checkId: number;
+  source: AlertSource;
+  channel: ChannelName;
+  level: string;
+  status: "sent" | "failed" | "deduped";
+  messageId?: string;
+  error?: string;
+}
+
+function recordAlertRow(db: DB, input: RecordAlertRowInput): void {
+  try {
+    db.insert(alerts)
+      .values({
+        domainId: input.domainId,
+        checkId: input.checkId,
+        source: input.source,
+        channel: input.channel,
+        level: input.level,
+        status: input.status,
+        sentAt: input.status === "sent" ? new Date().toISOString() : null,
+        error: input.error ?? null,
+      })
+      .run();
+  } catch (err) {
+    console.error(`[alerter] failed to record alert row:`, err);
+  }
+}
+
+/**
+ * Process a single check and fire alerts across all enabled channels.
+ * Two alert groups are evaluated independently:
+ *   - cert expiry  (source = "cert")
+ *   - domain expiry (source = "domain")
+ */
 export async function processCheckAlert(
   input: ProcessCheckAlertInput
-): Promise<AlertSendResult | null> {
-  const levelInfo = determineAlertLevel(input.daysRemaining);
-  if (!levelInfo) return null;
-
+): Promise<ProcessCheckAlertOutput> {
   const db = input.db ?? getDb();
-  if (wasRecentlyAlerted(input.domainId, levelInfo.level, 24, db)) {
-    return { level: levelInfo.level, status: "deduped" };
-  }
-
   const domain = db
     .select()
     .from(domains)
     .where(eq(domains.id, input.domainId))
     .limit(1)
     .all()[0];
-  if (!domain) return null;
+  if (!domain) return { cert: null, domain: null };
 
-  const to = process.env.ALERT_EMAIL_TO;
-  if (!to) {
-    return { level: levelInfo.level, status: "skipped", error: "ALERT_EMAIL_TO not set" };
+  const out: ProcessCheckAlertOutput = { cert: null, domain: null };
+
+  const certLevel = determineAlertLevel(input.certDaysRemaining);
+  if (certLevel && input.certDaysRemaining !== null && input.certDaysRemaining !== undefined) {
+    out.cert = await dispatchOne(
+      "cert",
+      { hostname: domain.hostname, port: domain.port },
+      certLevel,
+      input.certDaysRemaining,
+      input.checkId,
+      input.domainId,
+      db
+    );
   }
-  const from = process.env.ALERT_EMAIL_FROM ?? "certpulse@localhost";
 
-  const days = input.daysRemaining ?? 0;
-  const text = [
-    `CertPulse SSL Alert`,
-    ``,
-    `Domain: ${domain.hostname}:${domain.port}`,
-    `Days remaining: ${days}`,
-    `Status: ${levelInfo.subject}`,
-    ``,
-    `Check #${input.checkId} recorded at ${new Date().toISOString()}`,
-  ].join("\n");
+  const domainLevel = determineAlertLevel(input.domainDaysRemaining);
+  if (domainLevel && input.domainDaysRemaining !== null && input.domainDaysRemaining !== undefined) {
+    out.domain = await dispatchOne(
+      "domain",
+      { hostname: domain.hostname, port: domain.port },
+      domainLevel,
+      input.domainDaysRemaining,
+      input.checkId,
+      input.domainId,
+      db
+    );
+  }
 
-  const sender = getDefaultSender();
-  const result = await sender.send({ from, to, subject: `[CertPulse] ${domain.hostname}: ${levelInfo.subject}`, text });
-
-  const status: "sent" | "failed" =
-    result.error ? "failed" : "sent";
-  const sentAt = status === "sent" ? new Date().toISOString() : null;
-
-  db.insert(alerts)
-    .values({
-      domainId: input.domainId,
-      checkId: input.checkId,
-      level: levelInfo.level,
-      type: "email",
-      status,
-      sentAt,
-      error: result.error ?? null,
-    })
-    .run();
-
-  return {
-    level: levelInfo.level,
-    status,
-    messageId: result.id,
-    error: result.error,
-  };
+  return out;
 }
 
+/** Back-compat: process a check as if it were a cert-only alert. */
 export async function runAlertForCheck(
   checkId: number,
   domainId: number,
   daysRemaining: number | null
-): Promise<AlertSendResult | null> {
-  return processCheckAlert({ checkId, domainId, daysRemaining });
+): Promise<ChannelDispatchResult[] | null> {
+  const out = await processCheckAlert({ checkId, domainId, certDaysRemaining: daysRemaining, domainDaysRemaining: null });
+  return out.cert;
 }
 
 export function recentAlertsForDomain(domainId: number, limit = 20) {
