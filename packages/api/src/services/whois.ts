@@ -7,7 +7,7 @@
  * domain. If RDAP isn't available (some ccTLDs still don't have it), we
  * fall back to a TCP WHOIS query against the IANA-referred server.
  *
- * No external dependencies — only Node's built-in `https` and `net` modules.
+ * No external dependencies — only Node's built-in `fetch` (Node 18+) and `net` modules.
  */
 
 import { createConnection } from "node:net";
@@ -84,7 +84,10 @@ function computeDaysRemaining(expiresAt: string): number | null {
 interface RdapDomainResponse {
   events?: Array<{ eventAction?: string; eventDate?: string }>;
   entities?: Array<{
+    // RFC 7483 §5.1: roles is an array. Some servers still emit a singular
+    // `role` string for back-compat, so accept both.
     role?: string;
+    roles?: string[];
     vcardArray?: [
       string,
       Array<Array<string | Record<string, string> | string[]>> | undefined,
@@ -96,7 +99,15 @@ interface RdapDomainResponse {
 function extractRegistrar(rdap: RdapDomainResponse): string | null {
   if (!Array.isArray(rdap.entities)) return null;
   for (const e of rdap.entities) {
-    if (e.role !== "registrar") continue;
+    // Per RFC 7483 §5.1, RDAP entity objects expose `roles` as an array
+    // (e.g. ["registrar", "sponsor"]). Some servers may still emit the
+    // singular `role` for back-compat, so check both.
+    const roles: string[] = Array.isArray(e.roles)
+      ? e.roles
+      : typeof e.role === "string"
+        ? [e.role]
+        : [];
+    if (!roles.includes("registrar")) continue;
     const vcard = e.vcardArray?.[1];
     if (!Array.isArray(vcard)) continue;
     for (const entry of vcard) {
@@ -215,10 +226,15 @@ export function extractWhoisExpiry(text: string): { expiresAt: string | null; re
 }
 
 async function lookupWhoisFallback(hostname: string): Promise<DomainExpiryResult> {
-  // IANA WHOIS server. It returns the authoritative whois server for the
-  // TLD, which we then query for the actual domain.
+  // IANA WHOIS server. Querying it with the TLD (e.g. "com") returns the
+  // authoritative whois server for that TLD. Querying with a full hostname
+  // like "example.com" usually yields no useful referral.
+  const tld = tldOf(hostname);
+  if (!tld) {
+    return { expiresAt: null, daysRemaining: null, registrar: null, error: "No TLD" };
+  }
   try {
-    const referral = await queryWhoisServer("whois.iana.org", hostname, WHOIS_TIMEOUT_MS);
+    const referral = await queryWhoisServer("whois.iana.org", tld, WHOIS_TIMEOUT_MS);
     const referMatch = referral.match(/(?:refer|whois)\s*[:=]\s*([a-z0-9.-]+\.[a-z]{2,})/i);
     const whoisServer = referMatch?.[1] ?? "whois.iana.org";
     const response = await queryWhoisServer(whoisServer, hostname, WHOIS_TIMEOUT_MS);
