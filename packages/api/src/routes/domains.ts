@@ -83,6 +83,10 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
           issuerOrg: checks.issuerOrg,
           error: checks.error,
           checkedAt: checks.checkedAt,
+          domainExpiresAt: checks.domainExpiresAt,
+          domainExpiresDaysRemaining: checks.domainExpiresDaysRemaining,
+          domainRegistrar: checks.domainRegistrar,
+          domainRegistrarError: checks.domainRegistrarError,
         },
       })
       .from(domains)
