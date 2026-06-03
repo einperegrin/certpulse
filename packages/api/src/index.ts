@@ -6,6 +6,7 @@ import { runSqlMigrations } from "./db/sqlmigrate.js";
 import { createDomainsRouter } from "./routes/domains.js";
 import { createChecksRouter } from "./routes/checks.js";
 import { createDashboardRouter } from "./routes/dashboard.js";
+import { createChannelsRouter } from "./routes/channels.js";
 import { startScheduler, stopScheduler, getCheckIntervalMinutes } from "./services/scheduler.js";
 import { recentAlerts } from "./services/alerter.js";
 
@@ -20,6 +21,7 @@ export function createApp(options?: { db?: DB }) {
   app.route("/api/domains", createDomainsRouter(db));
   app.route("/api/checks", createChecksRouter(db));
   app.route("/api/dashboard", createDashboardRouter(db));
+  app.route("/api", createChannelsRouter(db));
 
   app.get("/api/alerts", (c) => {
     const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 200);
