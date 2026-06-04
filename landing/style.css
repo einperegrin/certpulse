@@ -288,5 +288,11 @@ section { padding: 80px 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    animation-name: none !important;
+    transition-duration: 0.001s !important;
+    transition-property: none !important;
+  }
 }
