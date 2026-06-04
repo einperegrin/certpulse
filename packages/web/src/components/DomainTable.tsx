@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { RefreshCw, Trash2, Loader2 } from "lucide-react";
+import { RefreshCw, Trash2, Loader2, Globe } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -48,7 +48,8 @@ export function DomainTable({ rows }: { rows: DomainRow[] }) {
         <TableRow>
           <TableHead>Domain</TableHead>
           <TableHead>Issuer</TableHead>
-          <TableHead className="text-right">Days Left</TableHead>
+          <TableHead className="text-right">Cert Days</TableHead>
+          <TableHead className="text-right">Domain Days</TableHead>
           <TableHead>Last Check</TableHead>
           <TableHead>Status</TableHead>
           <TableHead className="text-right">Actions</TableHead>
@@ -57,6 +58,7 @@ export function DomainTable({ rows }: { rows: DomainRow[] }) {
       <TableBody>
         {rows.map(({ domain, lastCheck }) => {
           const days = lastCheck?.daysRemaining ?? null;
+          const domainDays = lastCheck?.domainExpiresDaysRemaining ?? null;
           return (
             <TableRow
               key={domain.id}
@@ -72,6 +74,16 @@ export function DomainTable({ rows }: { rows: DomainRow[] }) {
               </TableCell>
               <TableCell className="text-right font-mono">
                 {days === null || days === undefined ? "—" : days}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                {domainDays === null || domainDays === undefined ? (
+                  <span className="text-slate-400">—</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Globe className="h-3 w-3 text-slate-400" />
+                    {domainDays}
+                  </span>
+                )}
               </TableCell>
               <TableCell>
                 {lastCheck?.checkedAt

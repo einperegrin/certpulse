@@ -22,6 +22,10 @@ export function createDashboardRouter(db: DB = getDb()): Hono {
           issuerOrg: checks.issuerOrg,
           error: checks.error,
           checkedAt: checks.checkedAt,
+          domainExpiresAt: checks.domainExpiresAt,
+          domainExpiresDaysRemaining: checks.domainExpiresDaysRemaining,
+          domainRegistrar: checks.domainRegistrar,
+          domainRegistrarError: checks.domainRegistrarError,
         },
       })
       .from(domains)
@@ -50,12 +54,29 @@ export function createDashboardRouter(db: DB = getDb()): Hono {
     ).length;
     const unchecked = allDomains.filter((d) => !d.lastCheck).length;
 
+    // Domain-registration expiry stats: independent of cert expiry.
+    const domainExpiringSoon = allDomains.filter(
+      (d) =>
+        d.lastCheck?.domainExpiresDaysRemaining !== null &&
+        d.lastCheck?.domainExpiresDaysRemaining !== undefined &&
+        d.lastCheck.domainExpiresDaysRemaining <= 30 &&
+        d.lastCheck.domainExpiresDaysRemaining > 0
+    ).length;
+    const domainExpired = allDomains.filter(
+      (d) =>
+        d.lastCheck?.domainExpiresDaysRemaining !== null &&
+        d.lastCheck?.domainExpiresDaysRemaining !== undefined &&
+        d.lastCheck.domainExpiresDaysRemaining <= 0
+    ).length;
+
     return c.json({
       total,
       expiringSoon,
       expired,
       healthy,
       unchecked,
+      domainExpiringSoon,
+      domainExpired,
       domains: allDomains,
     });
   });
