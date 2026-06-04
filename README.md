@@ -59,18 +59,22 @@ certpulse/
 
 Base URL: `http://localhost:3000`
 
-| Method | Path                          | Purpose                                                 |
-| ------ | ----------------------------- | ------------------------------------------------------- |
-| GET    | `/health`                     | Liveness probe                                          |
-| GET    | `/api/config`                 | Effective config (interval, hasResend, alert email)     |
-| GET    | `/api/dashboard`              | Counts + rows (total, healthy, expiring, expired)       |
-| GET    | `/api/domains`                | List all monitored domains + their latest check         |
-| POST   | `/api/domains`                | Add a domain; runs the first check immediately           |
-| GET    | `/api/domains/:id`            | Domain detail with last 10 checks                        |
-| DELETE | `/api/domains/:id`            | Remove a domain (cascades to its checks + alerts)       |
-| POST   | `/api/domains/:id/check`      | Manual "Check Now"                                      |
-| GET    | `/api/checks?domain_id=X`     | Recent checks (optionally filtered)                     |
-| GET    | `/api/alerts`                 | Recent alert history                                    |
+| Method | Path                                | Purpose                                                 |
+| ------ | ----------------------------------- | ------------------------------------------------------- |
+| GET    | `/health`                           | Liveness probe                                          |
+| GET    | `/api/config`                       | Effective config (interval, hasResend, alert email)     |
+| GET    | `/api/dashboard`                    | Counts + rows (cert + domain expiry, healthy, expired)  |
+| GET    | `/api/domains`                      | List all monitored domains + their latest check         |
+| POST   | `/api/domains`                      | Add a domain; runs the first check immediately           |
+| GET    | `/api/domains/:id`                  | Domain detail with last 10 checks                        |
+| DELETE | `/api/domains/:id`                  | Remove a domain (cascades to its checks + alerts)       |
+| POST   | `/api/domains/:id/check`            | Manual "Check Now"                                      |
+| GET    | `/api/domains/:id/channels`         | List alert channels configured for this domain          |
+| POST   | `/api/domains/:id/channels`         | Upsert a channel (channel, enabled, config)            |
+| PATCH  | `/api/domains/:id/channels/:cid`    | Update enabled flag and/or config                       |
+| DELETE | `/api/domains/:id/channels/:cid`    | Remove a channel                                         |
+| GET    | `/api/checks?domain_id=X`           | Recent checks (optionally filtered)                     |
+| GET    | `/api/alerts`                       | Recent alert history (includes source + channel)        |
 
 ### Example
 
@@ -104,7 +108,52 @@ curl -X POST http://localhost:3000/api/domains \
 | ≤ 1             | `critical`  | EXPIRES TOMORROW                 |
 | ≤ 0 (expired)   | `emergency` | CERTIFICATE EXPIRED              |
 
-Dedup: at most one alert per domain per level per 24 hours.
+Dedup: at most one alert per (domain, source, channel, level) per 24 hours.
+"Source" is `cert` (TLS expiry) or `domain` (registration expiry); each one
+fires independently.
+
+## Alert channels
+
+Every domain can have any number of alert channels enabled. They are
+configured per domain in the UI (Domain → "Alert Channels" card) or via
+the API. The same alert level table above applies to both cert and domain
+expiry — when a domain registration is within 30/7/1/0 days the same
+channels are notified.
+
+| Channel    | Free? | Setup                                                                 |
+| ---------- | ----- | --------------------------------------------------------------------- |
+| **Email**  | yes   | Set `RESEND_API_KEY` + `ALERT_EMAIL_TO` in the api container env      |
+| **Webhook**| yes   | Any HTTPS endpoint; POST a JSON payload (see below)                   |
+| **Telegram**| yes  | Create a bot via @BotFather, drop the bot token + chat id             |
+| **Slack**  | yes   | Create an Incoming Webhook, paste the URL                             |
+| **ntfy**   | yes   | Pick a topic (e.g. `certpulse-alerts`) on https://ntfy.sh             |
+
+Channels with missing config silently no-op (the alert row is recorded as
+`skipped` in the database). If a channel fails at send time, the error is
+logged and stored on the alert row — the other channels are not blocked.
+
+### Webhook payload
+
+```json
+{
+  "source": "cert",            // "cert" | "domain"
+  "level": "urgent",          // "warning" | "urgent" | "critical" | "emergency"
+  "hostname": "example.com:443",
+  "daysRemaining": 5,
+  "subject": "[CertPulse] example.com: Expires in 7 days",
+  "text": "…"
+}
+```
+
+## Domain registration expiry
+
+Each check also runs a domain registration lookup using RDAP (the IANA
+bootstrap → TLD server → `/domain/<host>`) with a plain TCP-WHOIS fallback
+for TLDs without RDAP. There are no new dependencies — it's all `node:net`
+and built-in `fetch`. WHOIS lookups run in parallel with the TLS check and
+the result is patched into the check row. Rate limits and missing data
+are handled gracefully — `domainRegistrarError` records the failure
+reason.
 
 ## Development
 
@@ -128,10 +177,14 @@ The web dev server proxies `/api/*` to `http://localhost:3000` by default. Overr
 - [x] Email alert sent when domain ≤ 30 / 7 / 1 days (or logged if no `RESEND_API_KEY`)
 - [x] Dashboard shows all domains with days remaining
 - [x] Data persists across container restarts (SQLite volume)
+- [x] v1: multi-channel alerts (email + webhook + Telegram + Slack + ntfy) per domain
+- [x] v1: domain registration expiry (RDAP with WHOIS fallback)
+- [x] v1: per-source (cert vs domain) alert dedup, independent channels
 
-## v1 backlog
+## v1 backlog (still open)
 
-Multi-channel alerts (webhook, Telegram, Slack, ntfy), domain expiry (RDAP/WHOIS), internal/PKI cert support, user auth, Stripe billing, status page, CT log monitoring, API token auth.
+Internal/PKI cert support, user auth, Stripe billing, status page, CT log
+monitoring, API token auth.
 
 ## License
 
