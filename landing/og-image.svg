@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0a0a0f"/>
+      <stop offset="1" stop-color="#14151f"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.0" r="0.8" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0 L0 0 0 48" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- Brand mark -->
+  <g transform="translate(80, 80)">
+    <circle cx="40" cy="40" r="40" fill="#10b981"/>
+    <path d="M22 41l13 13 22-26" fill="none" stroke="#0a0a0f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="180" y="115" fill="#e7e9f1" font-family="Inter, system-ui, sans-serif" font-size="38" font-weight="700" letter-spacing="-0.5">CertPulse</text>
+  <text x="180" y="155" fill="#6b7090" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="500">Open-core · Self-hosted · AGPL v3</text>
+
+  <!-- Headline -->
+  <text x="80" y="310" fill="#e7e9f1" font-family="Inter, system-ui, sans-serif" font-size="76" font-weight="800" letter-spacing="-2">Self-hosted SSL</text>
+  <text x="80" y="395" fill="url(#brand)" font-family="Inter, system-ui, sans-serif" font-size="76" font-weight="800" letter-spacing="-2">certificate monitor</text>
+
+  <!-- Subline -->
+  <text x="80" y="465" fill="#a4a8bd" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="500">Docker one-liner. 5 alert channels. Zero external dependencies.</text>
+
+  <!-- Bottom bar with code snippet -->
+  <g transform="translate(80, 510)">
+    <rect x="0" y="0" rx="14" ry="14" width="600" height="76" fill="#14151f" stroke="#232636" stroke-width="1.5"/>
+    <text x="22" y="32" fill="#6b7090" font-family="JetBrains Mono, ui-monospace, monospace" font-size="16">$</text>
+    <text x="48" y="32" fill="#e7e9f1" font-family="JetBrains Mono, ui-monospace, monospace" font-size="20" font-weight="500">docker compose up --build</text>
+    <text x="22" y="60" fill="#10b981" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14">★ github.com/einperegrin/certpulse</text>
+  </g>
+
+  <!-- Stats column -->
+  <g transform="translate(800, 470)">
+    <text x="0" y="0" fill="#a4a8bd" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="500" letter-spacing="2">5 CHANNELS</text>
+    <text x="0" y="36" fill="#a4a8bd" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="500" letter-spacing="2">0 EXTERNAL DEPS</text>
+    <text x="0" y="72" fill="#a4a8bd" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="500" letter-spacing="2">30/7/1 DAY ALERTS</text>
+  </g>
+</svg>
