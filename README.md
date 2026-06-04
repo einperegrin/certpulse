@@ -198,4 +198,5 @@ PRs welcome! Open an issue first to discuss what you'd like to change.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+Licensed under the [GNU Affero General Public License v3.0](./LICENSE).  
+If you'd like to use CertPulse in a closed-source product, contact us for a commercial license.
