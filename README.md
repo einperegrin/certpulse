@@ -9,12 +9,14 @@ Cert lifetimes are shrinking to 47 days by 2029.
 CertPulse fills the gap.
 
 [![CI](https://github.com/einperegrin/certpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/einperegrin/certpulse/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white)](./docker-compose.yml)
 
 [Quickstart](#-quickstart-docker) · [Channels](#-alert-channels) · [API](#-api) · [Config](#%EF%B8%8F-environment-variables) · [Develop](#-development)
 
-</div>
+|</div>
+
+<img src="screenshot-800w.png" alt="CertPulse Dashboard" width="800" />
 
 ---
 
