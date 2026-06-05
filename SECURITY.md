@@ -12,11 +12,11 @@ We take reports seriously and respond promptly.
 Only the **`main` branch** and the most recent tagged release receive
 security fixes. Older versions are not patched — please upgrade.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| `main`  | ✅                 |
-| Latest tagged release | ✅         |
-| Older releases        | ❌         |
+| Version              | Supported |
+| -------------------- | --------- |
+| `main`               | ✅        |
+| Latest tagged release | ✅       |
+| Older releases       | ❌        |
 
 ## Reporting a vulnerability
 
@@ -37,13 +37,13 @@ advisory]` with minimal details and we will convert it.
 
 ## Response SLA
 
-| Stage                  | Target                                       |
-| ---------------------- | -------------------------------------------- |
-| Acknowledgement        | within **48 hours** of your report           |
-| Triage & severity      | within **7 days**                            |
-| Patch (critical / high)| within **14 days**                           |
-| Patch (medium / low)   | next regular release (typically 2–4 weeks)   |
-| Public disclosure      | coordinated with you, after a fix is shipped |
+| Stage                   | Target                                       |
+| ----------------------- | -------------------------------------------- |
+| Acknowledgement         | within **48 hours** of your report           |
+| Triage & severity       | within **7 days**                            |
+| Patch (critical / high) | within **14 days**                           |
+| Patch (medium / low)    | next regular release (typically 2–4 weeks)   |
+| Public disclosure       | coordinated with you, after a fix is shipped |
 
 Critical and high-severity issues are prioritised. We will keep you
 informed of progress and credit you in the advisory (unless you prefer

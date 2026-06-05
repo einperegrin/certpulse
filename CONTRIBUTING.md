@@ -14,7 +14,9 @@ Assume good faith. Harassment of any kind is not tolerated.
 Open a [GitHub Issue](https://github.com/einperegrin/certpulse/issues/new)
 and include:
 
-- CertPulse version (`docker compose logs api` shows it on startup) and commit
+- CertPulse version and commit (for Docker: `docker compose ps` shows the
+  image tag, e.g. `einperegrin/certpulse:v1.0.0`; for source installs:
+  `git rev-parse HEAD`)
 - How you deployed (Docker image? `docker compose up`? source install?)
 - Relevant logs (`api` container logs, browser console for UI issues)
 - Steps to reproduce, expected vs. actual behaviour
@@ -23,7 +25,8 @@ and include:
 ## Suggesting features
 
 Open a [GitHub Issue](https://github.com/einperegrin/certpulse/issues/new)
-and use the **enhancement** label. Briefly describe:
+and tag it as a feature request (the maintainer will apply the
+**enhancement** label on triage). Briefly describe:
 
 - The problem you want to solve (not just the proposed solution)
 - Your proposed behaviour and any alternatives you considered
@@ -97,7 +100,7 @@ npm run dev:web      # http://localhost:5173
 ### Running tests
 
 ```bash
-npm test              # vitest in both packages
+npm test              # vitest in the api workspace (web has no test suite yet)
 npm run typecheck     # tsc --noEmit in both packages
 ```
 
@@ -116,8 +119,8 @@ docker-compose.yml
 ## Code style
 
 - **TypeScript strict** — no `any` in new code without justification
-- **Prettier** for formatting (default config), **ESLint** for linting
-  (`npm run lint` if configured in a workspace)
+- `npm run lint` runs `tsc --noEmit` in each workspace (no ESLint/Prettier
+  enforcement yet; formatting matches the surrounding style in a file)
 - Match surrounding style in a file; don't reformat unrelated lines
 - Prefer small, pure functions; explicit over clever
 
