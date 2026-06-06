@@ -22,4 +22,5 @@ python3 -m http.server 8000
 GitHub Pages from the `gh-pages` branch (or `/landing` path on `main`).
 
 The CI workflow `.github/workflows/landing.yml` builds and publishes this
-folder to `gh-pages` on every push to `feat/landing` (and on manual trigger).
+folder to `gh-pages` on every push to `main` that touches `landing/**`
+(and on manual trigger).
