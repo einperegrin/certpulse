@@ -4,15 +4,17 @@
 
   const toast = document.getElementById('toast');
   let toastTimer = null;
+  let toastHideTimer = null;
   function showToast(msg) {
     if (!toast) return;
     toast.textContent = msg;
     toast.hidden = false;
     requestAnimationFrame(() => toast.classList.add('show'));
     clearTimeout(toastTimer);
+    clearTimeout(toastHideTimer);
     toastTimer = setTimeout(() => {
       toast.classList.remove('show');
-      setTimeout(() => { toast.hidden = true; }, 200);
+      toastHideTimer = setTimeout(() => { toast.hidden = true; }, 200);
     }, 1800);
   }
 
