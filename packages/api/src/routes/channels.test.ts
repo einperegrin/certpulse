@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import { createInMemoryDb, type DB } from "../db/index.js";
 import { runSqlMigrations } from "../db/sqlmigrate.js";
 import { domains } from "../db/schema.js";
@@ -33,9 +33,18 @@ describe("alert channels router", () => {
   let db: DB;
 
   beforeEach(() => {
+    // Default for the happy-path tests: let the URL guard stay on but
+    // use public hostnames. The dedicated H-1 describe block re-enables
+    // the strict path.
+    delete process.env.ALLOW_PRIVATE_HOSTS;
     const m = makeApp();
     app = m.app;
     db = m.db;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    delete process.env.ALLOW_PRIVATE_HOSTS;
   });
 
   it("rejects an unknown channel", async () => {
@@ -141,5 +150,85 @@ describe("alert channels router", () => {
   it("returns 404 for missing domain", async () => {
     const get = await app.request(`/api/domains/99999/channels`);
     expect(get.status).toBe(404);
+  });
+});
+
+describe("alert channels router — URL guard (H-1)", () => {
+  let app: ReturnType<typeof createApp>;
+  let db: DB;
+
+  beforeEach(() => {
+    // The default config has AUTH_DISABLED=1 (vitest.config.ts). The URL
+    // guard runs independently; here we want the strict path — keep
+    // ALLOW_PRIVATE_HOSTS unset.
+    delete process.env.ALLOW_PRIVATE_HOSTS;
+    const m = makeApp();
+    app = m.app;
+    db = m.db;
+  });
+
+  it("rejects a webhook channel whose URL is private/loopback", async () => {
+    const d = seedDomain(db);
+    const res = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: { url: "https://127.0.0.1/hook" },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/private|loopback|link-local/i);
+  });
+
+  it("rejects a slack channel whose URL is private/loopback", async () => {
+    const d = seedDomain(db);
+    const res = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "slack",
+        config: { url: "https://169.254.169.254/latest" },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an ntfy channel whose server is loopback", async () => {
+    const d = seedDomain(db);
+    const res = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "ntfy",
+        config: { server: "https://10.0.0.1", topic: "alerts" },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects PATCH that changes the URL to a private target", async () => {
+    const d = seedDomain(db);
+    // Seed a public webhook channel first.
+    const post = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: { url: "https://example.com/hook" },
+      }),
+    });
+    const created = (await post.json()) as { channel: { id: number } };
+    // Now try to PATCH it to a private URL.
+    const patch = await app.request(
+      `/api/domains/${d.id}/channels/${created.channel.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { url: "https://192.168.1.1/hook" } }),
+      }
+    );
+    expect(patch.status).toBe(400);
   });
 });
