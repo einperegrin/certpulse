@@ -3,6 +3,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { type DB, getDb } from "../db/index.js";
 import { alertChannels, domains } from "../db/schema.js";
+import { validateWebhookUrl } from "../services/url-guard.js";
 
 const channelNameSchema = z.enum(["email", "webhook", "telegram", "slack", "ntfy"]);
 
@@ -31,6 +32,44 @@ const updateSchema = z.object({
   enabled: z.boolean().optional(),
   config: channelConfigSchema.optional(),
 });
+
+/**
+ * Validate URL-bearing fields in a channel config. Runs the same SSRF +
+ * scheme guard the senders use, so a misconfigured channel is rejected
+ * at save time (with 400) instead of at alert time (with a confusing
+ * `Webhook error: invalid URL` from the sender). Closes H-1.
+ */
+async function validateChannelConfig(
+  channel: "email" | "webhook" | "telegram" | "slack" | "ntfy",
+  config: Record<string, unknown>
+): Promise<string | null> {
+  if (channel === "webhook" || channel === "slack") {
+    const url = config.url;
+    if (typeof url !== "string" || !url) {
+      return "url is required for webhook/slack channels";
+    }
+    const v = await validateWebhookUrl(url);
+    return v.ok ? null : v.error ?? "invalid url";
+  }
+  if (channel === "ntfy") {
+    let url: unknown = config.url;
+    if (!url && typeof config.topic === "string" && config.topic) {
+      const server =
+        typeof config.server === "string" && config.server
+          ? config.server.replace(/\/$/, "")
+          : "https://ntfy.sh";
+      url = `${server}/${config.topic}`;
+    }
+    if (typeof url !== "string" || !url) {
+      return "url or topic is required for ntfy channel";
+    }
+    const v = await validateWebhookUrl(url);
+    return v.ok ? null : v.error ?? "invalid url";
+  }
+  // email / telegram — no URL to validate (telegram bot token is opaque
+  // and the API host is hardcoded).
+  return null;
+}
 
 type Env = {
   Variables: { db: DB };
@@ -113,6 +152,15 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
       return c.json({ error: "Invalid input", details: parsed.error.flatten() }, 400);
     }
 
+    // H-1: validate URL-bearing channel config at write time.
+    const urlError = await validateChannelConfig(
+      parsed.data.channel,
+      parsed.data.config
+    );
+    if (urlError) {
+      return c.json({ error: urlError }, 400);
+    }
+
     const configJson = JSON.stringify(parsed.data.config);
 
     // Upsert by (domain_id, channel). For email, this overrides the
@@ -174,6 +222,29 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
     if (!parsed.success) {
       return c.json({ error: "Invalid input", details: parsed.error.flatten() }, 400);
     }
+
+    // H-1: if the patch updates the config, re-validate URL-bearing fields.
+    // We need the channel name to know which fields to check, so we read
+    // the existing row.
+    if (parsed.data.config !== undefined) {
+      const existing = db
+        .select({ channel: alertChannels.channel })
+        .from(alertChannels)
+        .where(and(eq(alertChannels.id, id), eq(alertChannels.domainId, domainId)))
+        .limit(1)
+        .all()[0];
+      if (!existing) {
+        return c.json({ error: "Not found" }, 404);
+      }
+      const urlError = await validateChannelConfig(
+        existing.channel as "email" | "webhook" | "telegram" | "slack" | "ntfy",
+        parsed.data.config
+      );
+      if (urlError) {
+        return c.json({ error: urlError }, 400);
+      }
+    }
+
     const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
     if (parsed.data.enabled !== undefined) update.enabled = parsed.data.enabled;
     if (parsed.data.config !== undefined) update.config = JSON.stringify(parsed.data.config);
