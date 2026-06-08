@@ -100,4 +100,29 @@ describe("cron firing", () => {
     stopScheduler();
     expect(isSchedulerRunning()).toBe(false);
   });
+
+  it("stale-lock reclaim works when previous tick wrote updatedAt in SQLite datetime format (H-3)", async () => {
+    // Seed scheduler_state with running=1 and updatedAt 31 minutes ago,
+    // formatted as SQLite's `datetime('now', '-31 minutes')` would be.
+    // If scheduler.ts wrote ISO-8601 with a `T` separator (the bug Copilot
+    // flagged), the comparison `updated_at < datetime('now', '-30 minutes')`
+    // would lexicographically fail because 'T' > ' ' in ASCII, leaving the
+    // scheduler stuck. With sqliteNow() the reclaim should succeed.
+    const { schedulerState } = await import("../db/schema.js");
+    const stale = new Date(Date.now() - 31 * 60 * 1000)
+      .toISOString()
+      .replace("T", " ")
+      .replace(/\.\d{3}Z$/, "");
+    db.insert(schedulerState)
+      .values({ key: "running", value: "1", updatedAt: stale })
+      .onConflictDoNothing()
+      .run();
+
+    db.insert(domains)
+      .values({ hostname: "localhost", port: serverPort, enabled: true })
+      .run();
+
+    const result = await tickChecks(db, { rejectUnauthorized: false });
+    expect(result.ran).toBe(1);
+  });
 });

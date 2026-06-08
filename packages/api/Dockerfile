@@ -38,15 +38,20 @@ RUN apt-get update \
 RUN groupadd --system --gid 10001 certpulse \
     && useradd  --system --uid 10001 --gid certpulse --no-create-home --shell /usr/sbin/nologin certpulse
 
-# Copy the built artefacts and the lockfile. `npm ci --omit=dev` is the
-# lockfile-driven install — without the lockfile the build fails, so
-# an omitted lockfile can't slip through.
-COPY --from=build --chown=root:root /app/packages/api/dist                ./dist
-COPY --from=build --chown=root:root /app/packages/api/package.json        ./package.json
-COPY --from=build --chown=root:root /app/packages/api/package-lock.json   ./package-lock.json
-COPY --from=build --chown=root:root /app/packages/api/src/db/migrations   ./dist/db/migrations
-RUN npm ci --omit=dev --no-audit --no-fund --ignore-scripts \
+# Copy the built artefacts. We use the workspace-root lockfile (this repo
+# uses a single npm workspace, no per-package lockfile). The runtime install
+# uses the api workspace's package.json so the right tree is loaded, and the
+# root lockfile makes the install reproducible.
+# Permissions: code is world-readable, migrations belong to the runtime
+# user (the migration runner opens them after the UID drop).
+COPY --from=build --chown=root:root      /app/packages/api/dist                ./dist
+COPY --from=build --chown=root:root      /app/packages/api/package.json        ./packages/api/package.json
+COPY --from=build --chown=root:root      /app/package.json                     ./package.json
+COPY --from=build --chown=root:root      /app/package-lock.json                ./package-lock.json
+COPY --from=build --chown=certpulse:certpulse /app/packages/api/src/db/migrations   ./dist/db/migrations
+RUN cd /app/packages/api && npm ci --omit=dev --no-audit --no-fund \
     && chown -R root:root /app/node_modules \
+    && chmod -R a+rX /app/dist /app/packages /app/package.json /app/package-lock.json \
     && npm cache clean --force
 
 # /app/data is the only writable path (mounted as a volume in compose).

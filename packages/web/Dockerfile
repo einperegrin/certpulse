@@ -18,21 +18,21 @@ WORKDIR /app
 COPY packages/web ./packages/web
 RUN cd packages/web && npx vite build
 
-# Runtime — nginx as a non-root user. We use the alpine image and run
-# nginx in the foreground via a custom entrypoint that drops privs.
+# Runtime — nginx:alpine with the standard hardening pattern.
+# The official image already has `user nginx;` in /etc/nginx/nginx.conf,
+# which makes the master process run as root (required to bind port 80)
+# and the WORKER processes run as the unprivileged "nginx" user (UID 101).
+# The master never reads/writes request data — only the workers do.
 FROM nginx:1.27.3-alpine@sha256:814a8e88df978ade80e584cc5b333144b9372a8e3c98872d07137dbf3b44d0e4 AS runtime
 
-# nginx:alpine ships with a built-in "nginx" user (UID 101); we just
-# ensure the writable paths are owned by it.
+# Make the writable paths (cache, logs, html) owned by the nginx user so
+# workers can write to them; the config is owned by root so it can't be
+# mutated by the worker process.
 RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html
 COPY --from=build --chown=nginx:nginx /app/packages/web/dist /usr/share/nginx/html
 COPY --chown=root:root packages/web/nginx.conf /etc/nginx/conf.d/default.conf
-# Custom entrypoint that execs nginx as the unprivileged "nginx" user.
-COPY --chown=root:root packages/web/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
-  CMD wget -q -O- http://localhost/ >/dev/null 2>&1 || exit 1
-ENTRYPOINT ["/docker-entrypoint.sh"]
+  CMD wget -q -O- http://localhost/health >/dev/null 2>&1 || exit 1
 CMD ["nginx", "-g", "daemon off;"]

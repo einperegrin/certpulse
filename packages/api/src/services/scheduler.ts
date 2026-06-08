@@ -34,18 +34,28 @@ export function buildCronExpression(intervalMinutes: number): string {
 }
 
 /**
+ * Format a JS Date as SQLite's `datetime('now')` format
+ * (YYYY-MM-DD HH:MM:SS in UTC). The schema's DEFAULT clause uses this
+ * format, so writing ISO-8601 with a `T` separator breaks lexicographic
+ * text comparison in WHERE clauses (Copilot review: scheduler.ts:56).
+ */
+function sqliteNow(): string {
+  return new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, "");
+}
+
+/**
  * Atomic claim helper (H-3). Returns true if this caller now owns the
  * scheduler lock; false if a previous tick is still running. Crash-safe
  * because the lock is keyed in `scheduler_state` and stale after 30
  * minutes.
  */
 function tryClaimSchedulerLock(db: DB): boolean {
-  const now = new Date().toISOString();
   // Use a single UPDATE statement: SQLite is serialised, so the
-  // transition is atomic.
+  // transition is atomic. updatedAt is written in SQLite's datetime
+  // format so it compares correctly against `datetime('now', '-30 minutes')`.
   const result = db
     .update(schedulerState)
-    .set({ value: "1", updatedAt: now })
+    .set({ value: "1", updatedAt: sqliteNow() })
     .where(
       and(
         eq(schedulerState.key, "running"),
@@ -58,14 +68,14 @@ function tryClaimSchedulerLock(db: DB): boolean {
 
 function releaseSchedulerLock(db: DB): void {
   db.update(schedulerState)
-    .set({ value: "0", updatedAt: new Date().toISOString() })
+    .set({ value: "0", updatedAt: sqliteNow() })
     .where(eq(schedulerState.key, "running"))
     .run();
 }
 
 function setSchedulerState(db: DB, key: string, value: string): void {
   db.update(schedulerState)
-    .set({ value, updatedAt: new Date().toISOString() })
+    .set({ value, updatedAt: sqliteNow() })
     .where(eq(schedulerState.key, key))
     .run();
 }
