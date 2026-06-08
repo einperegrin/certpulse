@@ -16,6 +16,7 @@
  * write time so misconfig is caught at save, not at alert.
  */
 import { validateWebhookUrl } from "./url-guard.js";
+import { logger } from "./logger.js";
 
 export type ChannelName = "email" | "webhook" | "telegram" | "slack" | "ntfy";
 
@@ -51,8 +52,10 @@ class ResendEmailSender implements AlertChannelSender {
     const from = typeof config.from === "string" ? config.from : (process.env.ALERT_EMAIL_FROM ?? "certpulse@localhost");
     if (!to) return { error: "No destination email configured" };
     if (!this.apiKey) {
-      // Log to stdout — keeps the old fallback behaviour.
-      console.log(`[alert:email:log] from=${from} to=${to} subject="${content.subject}"`);
+      // Log to stdout — keeps the old fallback behaviour. Pino's
+      // redaction list scrubs `to`/`from` so we don't accidentally
+      // capture the recipient's email in a structured log.
+      logger.info({ to, from, subject: content.subject }, "alert:email:log");
       console.log(content.text);
       return { id: `log-${Date.now()}` };
     }

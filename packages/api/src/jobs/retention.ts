@@ -12,6 +12,7 @@
 import { lt, sql } from "drizzle-orm";
 import { type DB } from "../db/index.js";
 import { checks, alerts } from "../db/schema.js";
+import { logger } from "../services/logger.js";
 
 export const CHECK_RETENTION_DAYS = 90;
 export const ALERT_RETENTION_DAYS = 365;
@@ -45,7 +46,7 @@ export function runRetention(
     db.run(sql`VACUUM`);
   } catch (err) {
     // VACUUM is best-effort — the next run will pick it up.
-    console.error("[retention] VACUUM failed:", err);
+    logger.error({ err }, "VACUUM failed");
   }
 
   return { deletedChecks, deletedAlerts };

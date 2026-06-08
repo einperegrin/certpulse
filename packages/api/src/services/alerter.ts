@@ -6,6 +6,7 @@ import {
   type ChannelName,
   getChannelSender,
 } from "./channels.js";
+import { logger } from "./logger.js";
 
 export type AlertLevel = "warning" | "urgent" | "critical" | "emergency";
 export type AlertSource = "cert" | "domain";
@@ -223,7 +224,7 @@ async function dispatchOne(
       } catch (err) {
         // Same swallow as the standalone recordAlertRow — we never want
         // dedup bookkeeping to crash an alert dispatch.
-        console.error(`[alerter] failed to record deduped row:`, err);
+        logger.error({ err }, "failed to record deduped row");
       }
       return false;
     });
@@ -322,7 +323,7 @@ function recordAlertRow(db: DB, input: RecordAlertRowInput): void {
       })
       .run();
   } catch (err) {
-    console.error(`[alerter] failed to record alert row:`, err);
+    logger.error({ err }, "failed to record alert row");
   }
 }
 

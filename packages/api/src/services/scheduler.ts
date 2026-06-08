@@ -4,6 +4,7 @@ import { type DB, getDb } from "../db/index.js";
 import { schedulerState } from "../db/schema.js";
 import { runChecksForAllEnabledDomains } from "./checker-runner.js";
 import { runRetention } from "../jobs/retention.js";
+import { logger } from "./logger.js";
 
 let task: ScheduledTask | null = null;
 
@@ -90,6 +91,7 @@ export async function tickChecks(
   }
 
   if (!tryClaimSchedulerLock(db)) {
+    logger.debug("tick skipped — previous tick still running");
     return { ran: 0, deduplicated: true };
   }
   const concurrency = options.concurrency ?? 10;
@@ -114,7 +116,7 @@ export async function tickChecks(
         setSchedulerState(db, "last_retention", new Date().toISOString());
       }
     } catch (err) {
-      console.error("[scheduler] retention failed:", err);
+      logger.error({ err }, "retention failed");
     }
 
     setSchedulerState(db, "last_tick", new Date().toISOString());
@@ -142,7 +144,7 @@ export function startScheduler(
   }
   task = cron.schedule(expression, () => {
     tickChecks(db, options).catch((err) => {
-      console.error("[scheduler] tick failed:", err);
+      logger.error({ err }, "scheduled tick failed");
     });
   });
   return { task, intervalMinutes: interval, expression };
