@@ -55,9 +55,18 @@ export function createApp(options?: { db?: DB }) {
   );
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
+  // Generic onError (H-4 / M-8): never leak internal error messages to
+  // API clients. The full error is logged server-side with a request
+  // id; the client gets a generic 500 plus the id so support can
+  // correlate without exposing stack traces, file paths, library
+  // versions, or other internal detail.
   app.onError((err, c) => {
-    console.error("[api] error:", err);
-    return c.json({ error: err.message ?? "Internal server error" }, 500);
+    const requestId = crypto.randomUUID();
+    console.error(`[api] error ${requestId}:`, err);
+    return c.json(
+      { error: "Internal server error", requestId },
+      500
+    );
   });
 
   return app;

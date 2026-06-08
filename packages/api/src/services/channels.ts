@@ -101,7 +101,11 @@ class WebhookSender implements AlertChannelSender {
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        return { error: `Webhook HTTP ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}` };
+        // H-4: strip CR/LF and clamp the body before embedding in the
+        // error message — defends against log-injection if this string
+        // ever ends up in a structured log.
+        const sanitized = body.replace(/[\r\n]/g, " ").slice(0, 100);
+        return { error: `Webhook HTTP ${res.status}${sanitized ? `: ${sanitized}` : ""}` };
       }
       return { id: `webhook-${res.status}` };
     } catch (err) {
@@ -136,7 +140,8 @@ class TelegramSender implements AlertChannelSender {
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        return { error: `Telegram HTTP ${res.status}: ${body.slice(0, 200)}` };
+        const sanitized = body.replace(/[\r\n]/g, " ").slice(0, 100);
+        return { error: `Telegram HTTP ${res.status}: ${sanitized}` };
       }
       const data = (await res.json().catch(() => null)) as { result?: { message_id?: number } } | null;
       return { id: data?.result?.message_id ? `tg-${data.result.message_id}` : "tg-ok" };
@@ -170,7 +175,8 @@ class SlackSender implements AlertChannelSender {
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        return { error: `Slack HTTP ${res.status}: ${body.slice(0, 200)}` };
+        const sanitized = body.replace(/[\r\n]/g, " ").slice(0, 100);
+        return { error: `Slack HTTP ${res.status}: ${sanitized}` };
       }
       return { id: `slack-${res.status}` };
     } catch (err) {
@@ -211,7 +217,8 @@ class NtfySender implements AlertChannelSender {
       });
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        return { error: `ntfy HTTP ${res.status}: ${body.slice(0, 200)}` };
+        const sanitized = body.replace(/[\r\n]/g, " ").slice(0, 100);
+        return { error: `ntfy HTTP ${res.status}: ${sanitized}` };
       }
       return { id: `ntfy-${res.status}` };
     } catch (err) {
