@@ -4,6 +4,25 @@ import { checks, domains } from "../db/schema.js";
 import { checkSSL } from "./checker.js";
 import { processCheckAlert, type ChannelDispatchResult } from "./alerter.js";
 import { lookupDomainExpiry } from "./whois.js";
+import { isPrivateAddress } from "./ssrf-guard.js";
+
+/**
+ * Error thrown when a check is denied because the hostname resolves to a
+ * private/loopback/link-local address at the time of the check. This is a
+ * runtime guard — even if a hostname was public when POSTed, it may have
+ * flipped private since, and we must not open a connection to it.
+ */
+export class PrivateAddressError extends Error {
+  readonly hostname: string;
+  constructor(hostname: string) {
+    super(
+      `Refusing to check ${hostname}: hostname resolves to a private/loopback/link-local address. ` +
+        `Set ALLOW_PRIVATE_HOSTS=1 to override (not recommended).`
+    );
+    this.name = "PrivateAddressError";
+    this.hostname = hostname;
+  }
+}
 
 export interface RunCheckOutcome {
   domainId: number;
@@ -33,6 +52,15 @@ export async function runCheckForDomain(
   db: DB = getDb(),
   options: RunCheckOptions = {}
 ): Promise<RunCheckOutcome> {
+  // SSRF guard at the moment of TCP connect. The guard runs in POST
+  // /api/domains too, but a hostname that flips from public to private
+  // between writes would slip past that. This is the last line of defence.
+  if (process.env.ALLOW_PRIVATE_HOSTS !== "1") {
+    if (await isPrivateAddress(hostname)) {
+      throw new PrivateAddressError(hostname);
+    }
+  }
+
   const result = await checkSSL(hostname, port, {
     rejectUnauthorized: options.rejectUnauthorized,
     timeoutMs: options.timeoutMs,

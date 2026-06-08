@@ -7,6 +7,7 @@ import { createDomainsRouter } from "./routes/domains.js";
 import { createChecksRouter } from "./routes/checks.js";
 import { createDashboardRouter } from "./routes/dashboard.js";
 import { createChannelsRouter } from "./routes/channels.js";
+import { createAuthMiddleware } from "./middleware/auth.js";
 import { startScheduler, stopScheduler, getCheckIntervalMinutes } from "./services/scheduler.js";
 import { recentAlerts } from "./services/alerter.js";
 
@@ -14,9 +15,26 @@ export function createApp(options?: { db?: DB }) {
   const db = options?.db ?? getDb();
   const app = new Hono();
 
-  app.use("*", cors({ origin: "*" }));
+  // CORS: reflect the request Origin (we sit behind nginx, which can also
+  // gate on this). Never use origin: "*" in production — paired with auth,
+  // echoing Origin is the standard hardening.
+  app.use(
+    "*",
+    cors({
+      origin: (origin) => origin ?? "*",
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    })
+  );
 
+  // /health is public — the docker healthcheck and load balancers hit it
+  // without credentials. It is registered BEFORE the auth middleware so
+  // it can never be locked out.
   app.get("/health", (c) => c.json({ ok: true, ts: new Date().toISOString() }));
+
+  // Bearer-token auth on every /api/* route. Skips /health (registered above
+  // before this middleware) and is bypassed only when AUTH_DISABLED is set
+  // (dev mode — see auth.ts).
+  app.use("/api/*", createAuthMiddleware(db));
 
   app.route("/api/domains", createDomainsRouter(db));
   app.route("/api/checks", createChecksRouter(db));

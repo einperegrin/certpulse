@@ -8,7 +8,14 @@
  *
  * Configuration is channel-specific JSON. Validators run before send and
  * skip with `{ error: "..." }` if the config is missing required fields.
+ *
+ * URL-bearing senders (webhook, slack, ntfy) run every URL through
+ * `validateWebhookUrl` before fetching — that rejects http to non-loopback
+ * hostnames, blocks private/loopback/link-local targets, and is the
+ * single chokepoint for H-1. The channels route also validates URLs at
+ * write time so misconfig is caught at save, not at alert.
  */
+import { validateWebhookUrl } from "./url-guard.js";
 
 export type ChannelName = "email" | "webhook" | "telegram" | "slack" | "ntfy";
 
@@ -73,11 +80,10 @@ class WebhookSender implements AlertChannelSender {
   async send(content: AlertContent, config: Record<string, unknown>): Promise<SendResult> {
     const url = typeof config.url === "string" ? config.url : "";
     if (!url) return { error: "webhook URL not configured" };
-    try {
-      new URL(url);
-    } catch {
-      return { error: "Invalid webhook URL" };
-    }
+    // SSRF + scheme guard (H-1). Re-validated at send time because a
+    // hostname that was public at config-save may have flipped private.
+    const v = await validateWebhookUrl(url);
+    if (!v.ok) return { error: v.error ?? "Invalid webhook URL" };
     const payload = {
       source: content.source,
       level: content.level,
@@ -147,11 +153,10 @@ class SlackSender implements AlertChannelSender {
   async send(content: AlertContent, config: Record<string, unknown>): Promise<SendResult> {
     const url = typeof config.url === "string" ? config.url : "";
     if (!url) return { error: "Slack webhook URL not configured" };
-    try {
-      new URL(url);
-    } catch {
-      return { error: "Invalid Slack URL" };
-    }
+    // SSRF + scheme guard (H-1) — Slack URLs should always be https to
+    // hooks.slack.com, but we let validateWebhookUrl enforce it.
+    const v = await validateWebhookUrl(url);
+    if (!v.ok) return { error: v.error ?? "Invalid Slack URL" };
     const emoji = content.source === "domain" ? ":globe_with_meridians:" : ":lock:";
     const payload = {
       text: `${emoji} *${content.subject}*\n\`${content.hostname}\`\n${content.text}`,
@@ -186,11 +191,10 @@ class NtfySender implements AlertChannelSender {
       url = `${server}/${config.topic}`;
     }
     if (!url) return { error: "ntfy topic or URL not configured" };
-    try {
-      new URL(url);
-    } catch {
-      return { error: "Invalid ntfy URL" };
-    }
+    // SSRF + scheme guard (H-1). ntfy.sh is the default, but operators
+    // can self-host — the guard ensures we never POST to a private target.
+    const v = await validateWebhookUrl(url);
+    if (!v.ok) return { error: v.error ?? "Invalid ntfy URL" };
     const priority = content.level === "emergency" || content.level === "critical" ? "5" : "3";
     const tags = content.source === "domain" ? "globe_with_meridians,rotating_light" : "lock,rotating_light";
     try {

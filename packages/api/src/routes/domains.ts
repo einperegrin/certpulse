@@ -4,6 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { type DB, getDb } from "../db/index.js";
 import { domains, checks } from "../db/schema.js";
 import { runCheckForDomainById } from "../services/checker-runner.js";
+import { isPrivateAddress } from "../services/ssrf-guard.js";
 
 const hostnameSchema = z
   .string()
@@ -43,6 +44,42 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
       return c.json({ error: "Invalid input", details: parsed.error.flatten() }, 400);
     }
     const { hostname, port } = parsed.data;
+
+    // SSRF guard: block private/loopback/link-local targets. Closes C-2.
+    // Skip only when ALLOW_PRIVATE_HOSTS=1 (air-gapped deployments); the
+    // operator must opt in explicitly. The same guard also runs in the
+    // checker so a hostname that flips from public to private later is
+    // still caught before we open a TCP connection.
+    if (process.env.ALLOW_PRIVATE_HOSTS !== "1") {
+      if (await isPrivateAddress(hostname)) {
+        return c.json(
+          {
+            error: "Hostname resolves to a private/loopback/link-local address",
+            hint:
+              "CertPulse cannot monitor internal services by default. " +
+              "Set ALLOW_PRIVATE_HOSTS=1 to override (not recommended).",
+          },
+          400
+        );
+      }
+    }
+
+    // Restrict port to standard TLS ports (443, 8443) unless explicitly
+    // overridden. Closes part of H-1 — arbitrary port = easy pivot.
+    if (
+      process.env.ALLOW_NONSTANDARD_TLS_PORTS !== "1" &&
+      port !== 443 &&
+      port !== 8443
+    ) {
+      return c.json(
+        {
+          error: "Port must be 443 or 8443",
+          hint: "Set ALLOW_NONSTANDARD_TLS_PORTS=1 to allow other ports.",
+        },
+        400
+      );
+    }
+
     const existing = db
       .select()
       .from(domains)

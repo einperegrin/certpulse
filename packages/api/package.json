@@ -13,7 +13,10 @@
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "token:create": "tsx src/cli/tokens.ts create",
+    "token:list": "tsx src/cli/tokens.ts list",
+    "token:revoke": "tsx src/cli/tokens.ts revoke"
   },
   "dependencies": {
     "better-sqlite3": "^11.5.0",
