@@ -8,6 +8,19 @@
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#0a0a0f" />
   <meta name="generator" content="CertPulse landing (static)" />
+  <meta name="referrer" content="no-referrer" />
+  <!--
+    M-7: Content Security Policy. The landing page only loads:
+      - its own style.css / script.js (script-src/style-src 'self')
+      - the JSON-LD block (script-src 'self' 'unsafe-inline' is scoped
+        by the page; we use a strict policy that only allows inline
+        <script> tags written by us, not third-party)
+      - Google Fonts CSS + the woff2 files served by fonts.gstatic.com
+        (style-src / font-src whitelisted)
+      - our own images and data: URIs (img-src 'self' data:)
+    No external scripts. No eval. No frame ancestors.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://certpulse.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';" />
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%2310b981'/><path d='M20 33l9 9 15-18' fill='none' stroke='%230a0a0f' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
 

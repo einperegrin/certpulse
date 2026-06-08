@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
     paths: [ 'landing/**' ]
+  pull_request:
+    branches: [ main ]
+    paths: [ 'landing/**' ]
   workflow_dispatch:
 
 permissions:
@@ -11,19 +14,27 @@ permissions:
   pages: write
   id-token: write
 
+# Pages deploys share a concurrency group so we never have two stacks
+# mid-deploy at the same time. PR previews are cancelled as new pushes
+# come in; main-branch deploys run serially to avoid stomping each other.
 concurrency:
   group: pages-landing
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   deploy:
+    # PR previews are "informational" — they produce an artifact and
+    # the workflow status, but we only deploy to Pages from main. PRs
+    # still get the build step so the diff is reviewable from the
+    # Actions UI.
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -42,3 +53,30 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  preview:
+    # L-9: build a preview artifact for every PR that touches landing/.
+    # We don't deploy to Pages from a PR (no public preview URL), but
+    # the artifact is downloadable from the run's Summary so reviewers
+    # can see the rendered HTML without building locally.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Build landing preview
+        run: |
+          mkdir -p _site
+          cp -r landing/. _site/
+          touch _site/.nojekyll
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-preview
+          path: _site
+          retention-days: 14
