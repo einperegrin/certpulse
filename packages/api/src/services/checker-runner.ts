@@ -43,6 +43,12 @@ export interface RunCheckOptions {
   rejectUnauthorized?: boolean;
   timeoutMs?: number;
   skipWhois?: boolean;
+  /**
+   * Number of checks to run in parallel. Defaults to 5 inside
+   * `runChecksForAllEnabledDomains` (Task 2.2 / H-3) — kept small to
+   * bound peak memory and TCP sockets on shared hosts.
+   */
+  concurrency?: number;
 }
 
 export async function runCheckForDomain(
@@ -170,29 +176,42 @@ export async function runChecksForAllEnabledDomains(
   db: DB = getDb(),
   options: RunCheckOptions = {}
 ): Promise<RunCheckOutcome[]> {
+  const concurrency = options.concurrency ?? 5;
   const rows = db
     .select()
     .from(domains)
     .where(eq(domains.enabled, true))
     .all();
+
+  // Process in chunks of `concurrency` (Task 2.2 / H-3). Chunking
+  // instead of `Promise.all` over every row bounds peak memory and
+  // TCP sockets, which matters when an operator has hundreds of
+  // domains configured.
   const out: RunCheckOutcome[] = [];
-  for (const row of rows) {
-    try {
-      const outcome = await runCheckForDomain(row.id, row.hostname, row.port, db, options);
-      out.push(outcome);
-    } catch (err) {
-      out.push({
-        domainId: row.id,
-        hostname: row.hostname,
-        port: row.port,
-        valid: false,
-        daysRemaining: null,
-        domainExpiresAt: null,
-        domainExpiresDaysRemaining: null,
-        domainRegistrar: null,
-        checkId: 0,
-        error: err instanceof Error ? err.message : String(err),
-      });
+  for (let i = 0; i < rows.length; i += concurrency) {
+    const chunk = rows.slice(i, i + concurrency);
+    const results = await Promise.allSettled(
+      chunk.map((row) =>
+        runCheckForDomain(row.id, row.hostname, row.port, db, options)
+      )
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        out.push(r.value);
+      } else {
+        out.push({
+          domainId: 0,
+          hostname: "unknown",
+          port: 443,
+          valid: false,
+          daysRemaining: null,
+          domainExpiresAt: null,
+          domainExpiresDaysRemaining: null,
+          domainRegistrar: null,
+          checkId: 0,
+          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        });
+      }
     }
   }
   return out;
