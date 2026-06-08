@@ -154,10 +154,46 @@ curl -X POST http://localhost:3000/api/domains \
 | `ALERT_EMAIL_FROM` | no | `certpulse@localhost` | Use a Resend-verified domain |
 | `CHECK_INTERVAL` | no | `60` | Minutes between automatic checks |
 | `DATABASE_PATH` | no | `/app/data/certpulse.db` | SQLite file path |
-| `PORT` | no | `3000` | API listen port |
+| `PORT` | no | `3000` | API listen port (internal — not exposed by docker compose) |
 | `VITE_API_URL` | no | `http://localhost:3000` | Web → API URL |
+| `AUTH_DISABLED` | no | *unset* | **DEV ONLY** — skips bearer-token auth. Never set in production. |
+| `ALLOW_PRIVATE_HOSTS` | no | *unset* | **DEV ONLY** — lets `POST /api/domains` and webhook URL validation accept loopback/private hostnames. Skip in production. |
+| `ALLOW_NONSTANDARD_TLS_PORTS` | no | *unset* | Lets `POST /api/domains` accept ports other than 443/8443. |
 
 ¹ Required only for email alerts. Without `RESEND_API_KEY`, all alerts go to stdout.
+
+## 🔐 Authentication (v0.2+)
+
+All `/api/*` routes require a bearer token, except `/health` (kept public for the docker healthcheck).
+
+### Create your first token
+
+```bash
+# from inside packages/api
+npm run token:create -- --label "admin"
+
+# or from a running container
+docker compose exec api npm run token:create -- --label admin
+```
+
+The CLI prints the raw token **exactly once** — copy it immediately. The database only stores the SHA-256 hash; the raw token is unrecoverable.
+
+### Use the token
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:5173/api/domains
+```
+
+### Manage tokens
+
+```bash
+npm run token:list               # show id, label, created, expires, last-used
+npm run token:revoke -- --id 3   # delete by id
+```
+
+### Escape hatch (dev only)
+
+Set `AUTH_DISABLED=*** in your `.env` for local dev to skip auth. **Never** set this in production — the entire API is open.
 
 ## 🧪 Development
 
