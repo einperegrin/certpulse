@@ -57,30 +57,44 @@ export interface ProcessCheckAlertOutput {
   domain: ChannelDispatchResult[] | null;
 }
 
-function wasRecentlyAlerted(
-  domainId: number,
-  source: AlertSource,
-  channel: ChannelName,
-  level: AlertLevel,
-  withinHours: number,
-  db: DB
+/**
+ * Returns true when no recent alert exists for this (domain, source,
+ * channel, level) tuple within the dedup window. The check and the
+ * subsequent `INSERT` in `recordAlertRow` are now performed inside a
+ * single SQLite transaction so two parallel ticks cannot both see
+ * "no recent alert" and both fire. (H-2 fix.)
+ *
+ * We can't get a strict 24h UNIQUE constraint in SQLite, so atomicity
+ * comes from the transaction wrapping the SELECT and INSERT — SQLite
+ * serialises writers, so a second concurrent caller will see the row
+ * committed by the first.
+ */
+function recordAlertAttempt(
+  db: DB,
+  input: {
+    domainId: number;
+    source: AlertSource;
+    channel: ChannelName;
+    level: AlertLevel;
+    dedupWindowHours: number;
+  }
 ): boolean {
-  const cutoff = new Date(Date.now() - withinHours * 3600 * 1000).toISOString();
-  const row = db
+  const cutoff = new Date(Date.now() - input.dedupWindowHours * 3600 * 1000).toISOString();
+  const recent = db
     .select({ id: alerts.id })
     .from(alerts)
     .where(
       and(
-        eq(alerts.domainId, domainId),
-        eq(alerts.source, source),
-        eq(alerts.channel, channel),
-        eq(alerts.level, level),
+        eq(alerts.domainId, input.domainId),
+        eq(alerts.source, input.source),
+        eq(alerts.channel, input.channel),
+        eq(alerts.level, input.level),
         gte(alerts.createdAt, cutoff)
       )
     )
     .limit(1)
     .all();
-  return row.length > 0;
+  return recent.length === 0;
 }
 
 function channelsForDomain(domainId: number, db: DB): AlertChannel[] {
@@ -176,16 +190,45 @@ async function dispatchOne(
 
   for (const ch of dispatchList) {
     const channelName = ch.channel as ChannelName;
-    if (wasRecentlyAlerted(domainId, source, channelName, level.level, 24, db)) {
-      results.push({ channel: channelName, source, level: level.level, status: "deduped" });
-      recordAlertRow(db, {
-        domainId,
-        checkId,
-        source,
-        channel: channelName,
-        level: level.level,
-        status: "deduped",
+    // Atomic dedup (H-2): wrap the "is there a recent alert?" check and
+    // the INSERT of the deduped record in a single transaction. If a
+    // concurrent tick has already recorded an alert for this tuple, the
+    // SELECT inside the transaction will see it and we mark the channel
+    // as deduped without firing.
+    const dedupKey = {
+      domainId,
+      source,
+      channel: channelName,
+      level: level.level,
+    };
+    const isNew = db.transaction((tx) => {
+      const fresh = recordAlertAttempt(tx as DB, {
+        ...dedupKey,
+        dedupWindowHours: 24,
       });
+      if (fresh) return true;
+      // Insert the deduped row inside the same transaction so the
+      // audit log still records the suppressed attempt.
+      try {
+        tx.insert(alerts)
+          .values({
+            domainId,
+            checkId,
+            source,
+            channel: channelName,
+            level: level.level,
+            status: "deduped",
+          })
+          .run();
+      } catch (err) {
+        // Same swallow as the standalone recordAlertRow — we never want
+        // dedup bookkeeping to crash an alert dispatch.
+        console.error(`[alerter] failed to record deduped row:`, err);
+      }
+      return false;
+    });
+    if (!isNew) {
+      results.push({ channel: channelName, source, level: level.level, status: "deduped" });
       continue;
     }
     let cfg: Record<string, unknown> = {};
