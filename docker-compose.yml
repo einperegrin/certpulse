@@ -3,8 +3,12 @@ services:
     build:
       context: .
       dockerfile: packages/api/Dockerfile
-    ports:
-      - "${API_PORT:-3000}:3000"
+    # v0.2 hardening: do NOT expose the api on a host port. All traffic
+    # must go through the nginx reverse proxy in the `web` service. If
+    # an operator really needs to reach the API directly (e.g. for the
+    # token CLI from the host), they can `docker compose exec api ...`.
+    expose:
+      - "3000"
     volumes:
       - certpulse-data:/app/data
     environment:
@@ -15,6 +19,18 @@ services:
       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
       - PORT=3000
       - NODE_ENV=production
+    # Read-only root filesystem — only the data volume is writable.
+    # /tmp gets a tmpfs in case anything wants scratch space.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    # Drop all Linux capabilities, then add only what node needs (none
+    # for a normal HTTP server). no-new-privileges prevents setuid
+    # binaries from escalating.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -32,6 +48,24 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # Same hardening for nginx: read-only root, no new privileges, no
+    # extra capabilities. Nginx needs /var/cache/nginx and /var/run for
+    # pid/socket; we provide them via tmpfs.
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m
+      - /var/run:size=4m
+      - /tmp:size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
