@@ -13,7 +13,6 @@ import {
   stopScheduler,
   tickChecks,
 } from "./scheduler.js";
-
 describe("scheduler helpers", () => {
   it("returns the configured interval from env", () => {
     process.env.CHECK_INTERVAL = "15";
@@ -39,10 +38,15 @@ describe("cron firing", () => {
   beforeAll(async () => {
     server = await startTlsTestServer({ daysValid: 45 });
     serverPort = server.port;
+    // The local TLS test server is on loopback. The SSRF guard in
+    // checker-runner would otherwise refuse it; the env escape hatch is
+    // exactly designed for this case (unit/integration testing).
+    process.env.ALLOW_PRIVATE_HOSTS = "1";
   }, 30000);
 
   afterAll(async () => {
     await server.close();
+    delete process.env.ALLOW_PRIVATE_HOSTS;
   });
 
   beforeEach(() => {

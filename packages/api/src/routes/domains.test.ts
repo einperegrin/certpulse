@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, afterEach, vi } from "vitest";
 import { createInMemoryDb, type DB } from "../db/index.js";
 import { runSqlMigrations } from "../db/sqlmigrate.js";
 import { checks, domains } from "../db/schema.js";
@@ -20,7 +20,15 @@ describe("domain CRUD HTTP", () => {
     const m = makeDb();
     db = m.db;
     sqlite = m.sqlite;
+    // Disable the SSRF guard for the existing happy-path tests so they can
+    // use fake hostnames. The dedicated SSRF test below covers the
+    // enabled-guarded path.
+    vi.stubEnv("ALLOW_PRIVATE_HOSTS", "1");
     app = createApp({ db });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("creates a domain via POST /api/domains (but skips the live check)", async () => {
@@ -106,6 +114,56 @@ describe("domain CRUD HTTP", () => {
   it("GET /api/domains/:id returns 404 for missing domain", async () => {
     const res = await app.request("/api/domains/99999");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("domain CRUD HTTP — SSRF guard (C-2)", () => {
+  let app: ReturnType<typeof createApp>;
+  let db: DB;
+
+  beforeEach(() => {
+    const m = makeDb();
+    db = m.db;
+    // Re-enable the guard (it is off in the suite default — see above).
+    vi.stubEnv("ALLOW_PRIVATE_HOSTS", "");
+    app = createApp({ db });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects POST /api/domains for an IPv4 loopback hostname", async () => {
+    const res = await app.request("/api/domains", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostname: "127.0.0.1", port: 443 }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/private|loopback|link-local/i);
+  });
+
+  it("rejects POST /api/domains for the cloud metadata link-local IP", async () => {
+    const res = await app.request("/api/domains", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostname: "169.254.169.254", port: 443 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects POST /api/domains for a non-standard TLS port (e.g. 22)", async () => {
+    // ALLOW_PRIVATE_HOSTS is off, but use a public-resolving hostname to
+    // isolate the port-restriction check from the SSRF check.
+    const res = await app.request("/api/domains", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostname: "example.com", port: 22 }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/port/i);
   });
 });
 
