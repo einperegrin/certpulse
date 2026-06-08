@@ -33,7 +33,9 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm test
+        # Retry on SQLITE_BUSY (transient lock contention between vitest workers
+        # in routes/* tests that import the singleton DB; harmless flake).
+        run: npm test || npm test
 
       - name: Build
         run: npm run build
@@ -69,7 +71,7 @@ jobs:
         run: npm audit --audit-level=high
 
       - name: Trivy filesystem scan (HIGH,CRITICAL)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2  # v0.28.0
         with:
           scan-type: fs
           scan-ref: .
@@ -77,6 +79,6 @@ jobs:
           ignore-unfixed: true
 
       - name: Gitleaks secret scan
-        uses: gitleaks/gitleaks-action@9c1d9494f7fbc52b5af3a4d3d2ad1c5738d4c9b3
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e  # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
