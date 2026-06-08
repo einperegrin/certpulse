@@ -21,6 +21,22 @@ describe("scheduler helpers", () => {
     expect(getCheckIntervalMinutes()).toBe(60);
   });
 
+  it("caps CHECK_INTERVAL at 24h (M-10) and falls back to 60 on garbage", () => {
+    process.env.CHECK_INTERVAL = "9999";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "1440";
+    expect(getCheckIntervalMinutes()).toBe(1440);
+    process.env.CHECK_INTERVAL = "1441";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "not-a-number";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "0";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "-5";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    delete process.env.CHECK_INTERVAL;
+  });
+
   it("builds the expected cron expression", () => {
     expect(buildCronExpression(15)).toBe("*/15 * * * *");
     expect(buildCronExpression(60)).toBe("0 */1 * * *");

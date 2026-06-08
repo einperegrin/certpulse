@@ -10,6 +10,7 @@ import { createChannelsRouter } from "./routes/channels.js";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { startScheduler, stopScheduler, getCheckIntervalMinutes } from "./services/scheduler.js";
 import { recentAlerts } from "./services/alerter.js";
+import { logger } from "./services/logger.js";
 
 export function createApp(options?: { db?: DB }) {
   const db = options?.db ?? getDb();
@@ -46,11 +47,13 @@ export function createApp(options?: { db?: DB }) {
     return c.json({ alerts: recentAlerts(limit) });
   });
 
+  // M-3: don't expose ALERT_EMAIL_TO — that's a PII risk in shared
+  // environments. The dashboard only needs to know "is resend
+  // configured?" so it can hide the email field.
   app.get("/api/config", (c) =>
     c.json({
       checkIntervalMinutes: getCheckIntervalMinutes(),
       hasResend: Boolean(process.env.RESEND_API_KEY),
-      alertEmailTo: process.env.ALERT_EMAIL_TO ?? null,
     })
   );
 
@@ -62,7 +65,7 @@ export function createApp(options?: { db?: DB }) {
   // versions, or other internal detail.
   app.onError((err, c) => {
     const requestId = crypto.randomUUID();
-    console.error(`[api] error ${requestId}:`, err);
+    logger.error({ err, requestId }, "[api] error");
     return c.json(
       { error: "Internal server error", requestId },
       500
@@ -78,13 +81,14 @@ export function bootstrap() {
   const app = createApp();
   const port = parseInt(process.env.PORT ?? "3000", 10);
   const scheduler = startScheduler();
-  console.log(
-    `[api] CertPulse API listening on :${port} (cron: ${scheduler.expression} = every ${scheduler.intervalMinutes}m)`
+  logger.info(
+    { port, cron: scheduler.expression, intervalMinutes: scheduler.intervalMinutes },
+    `[api] CertPulse API listening on :${port}`
   );
   const server = serve({ fetch: app.fetch, port });
 
   const shutdown = () => {
-    console.log("[api] shutting down...");
+    logger.info("[api] shutting down");
     stopScheduler();
     closeDb();
     server.close();
