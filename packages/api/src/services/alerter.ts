@@ -202,14 +202,48 @@ async function dispatchOne(
       channel: channelName,
       level: level.level,
     };
+    // Atomic dedup (H-2): the SELECT, the claim INSERT, and the
+    // dedup-bookkeeping INSERT all happen inside one transaction.
+    // A concurrent tick that runs while this transaction is open
+    // blocks on the SQLite writer-lock; when it gets the lock, the
+    // claim row is committed and `recordAlertAttempt` returns false,
+    // so the second tick sees the dedup. The claim row is created
+    // with status="pending" and is later updated in place once the
+    // sender returns (status="sent"/"failed"/"skipped") via
+    // `recordAlertRow`. If the process dies between claim and update
+    // the row stays "pending" — the dedup window then suppresses the
+    // next attempt correctly, so no alert is lost, but the audit log
+    // may show one "pending" row that never resolved. (The scheduler
+    // tick retry on next minute is the recovery path.)
     const isNew = db.transaction((tx) => {
       const fresh = recordAlertAttempt(tx as DB, {
         ...dedupKey,
         dedupWindowHours: 24,
       });
-      if (fresh) return true;
-      // Insert the deduped row inside the same transaction so the
-      // audit log still records the suppressed attempt.
+      if (!fresh) {
+        // Insert the deduped row inside the same transaction so the
+        // audit log still records the suppressed attempt.
+        try {
+          tx.insert(alerts)
+            .values({
+              domainId,
+              checkId,
+              source,
+              channel: channelName,
+              level: level.level,
+              status: "deduped",
+            })
+            .run();
+        } catch (err) {
+          // Same swallow as the standalone recordAlertRow — we never
+          // want dedup bookkeeping to crash an alert dispatch.
+          logger.error({ err }, "failed to record deduped row");
+        }
+        return false;
+      }
+      // Claim the dedup window by inserting a "pending" row inside the
+      // transaction. A concurrent tick that runs `recordAlertAttempt`
+      // after this commit will see this row and dedupe.
       try {
         tx.insert(alerts)
           .values({
@@ -218,15 +252,13 @@ async function dispatchOne(
             source,
             channel: channelName,
             level: level.level,
-            status: "deduped",
+            status: "pending",
           })
           .run();
       } catch (err) {
-        // Same swallow as the standalone recordAlertRow — we never want
-        // dedup bookkeeping to crash an alert dispatch.
-        logger.error({ err }, "failed to record deduped row");
+        logger.error({ err }, "failed to record pending claim row");
       }
-      return false;
+      return true;
     });
     if (!isNew) {
       results.push({ channel: channelName, source, level: level.level, status: "deduped" });

@@ -195,14 +195,16 @@ export async function runChecksForAllEnabledDomains(
         runCheckForDomain(row.id, row.hostname, row.port, db, options)
       )
     );
-    for (const r of results) {
+    results.forEach((r, idx) => {
+      const row = chunk[idx];
       if (r.status === "fulfilled") {
         out.push(r.value);
       } else {
+        // Preserve which domain failed (Copilot review: checker-runner.ts).
         out.push({
-          domainId: 0,
-          hostname: "unknown",
-          port: 443,
+          domainId: row?.id ?? 0,
+          hostname: row?.hostname ?? "unknown",
+          port: row?.port ?? 443,
           valid: false,
           daysRemaining: null,
           domainExpiresAt: null,
@@ -212,7 +214,7 @@ export async function runChecksForAllEnabledDomains(
           error: r.reason instanceof Error ? r.reason.message : String(r.reason),
         });
       }
-    }
+    });
   }
   return out;
 }
