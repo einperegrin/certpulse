@@ -70,6 +70,15 @@ export const alertChannels = sqliteTable("alert_channels", {
   updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
 });
 
+export const apiTokens = sqliteTable("api_tokens", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  tokenHash: text("token_hash").notNull().unique(),
+  label: text("label").notNull(),
+  createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
+  expiresAt: text("expires_at"),
+  lastUsedAt: text("last_used_at"),
+});
+
 export type Domain = typeof domains.$inferSelect;
 export type NewDomain = typeof domains.$inferInsert;
 export type Check = typeof checks.$inferSelect;
@@ -78,3 +87,5 @@ export type Alert = typeof alerts.$inferSelect;
 export type NewAlert = typeof alerts.$inferInsert;
 export type AlertChannel = typeof alertChannels.$inferSelect;
 export type NewAlertChannel = typeof alertChannels.$inferInsert;
+export type ApiToken = typeof apiTokens.$inferSelect;
+export type NewApiToken = typeof apiTokens.$inferInsert;
