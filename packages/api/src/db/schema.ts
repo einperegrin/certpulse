@@ -89,3 +89,16 @@ export type AlertChannel = typeof alertChannels.$inferSelect;
 export type NewAlertChannel = typeof alertChannels.$inferInsert;
 export type ApiToken = typeof apiTokens.$inferSelect;
 export type NewApiToken = typeof apiTokens.$inferInsert;
+
+/**
+ * Generic key/value store for scheduler state (last tick, retention
+ * timestamp, etc.) — see Task 2.2 (H-3) and Task 2.4 (M-1).
+ */
+export const schedulerState = sqliteTable("scheduler_state", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: text("updated_at").default(sql`(datetime('now'))`).notNull(),
+});
+
+export type SchedulerState = typeof schedulerState.$inferSelect;
+export type NewSchedulerState = typeof schedulerState.$inferInsert;

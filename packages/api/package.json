@@ -19,11 +19,12 @@
     "token:revoke": "tsx src/cli/tokens.ts revoke"
   },
   "dependencies": {
+    "@hono/node-server": "^1.13.5",
     "better-sqlite3": "^11.5.0",
     "drizzle-orm": "^0.36.4",
-    "@hono/node-server": "^1.13.5",
     "hono": "^4.6.10",
     "node-cron": "^3.0.3",
+    "pino": "^10.3.1",
     "resend": "^4.0.1",
     "zod": "^3.23.8"
   },

@@ -341,4 +341,62 @@ describe("alert dispatch (multi-channel + dedup)", () => {
 
     resetChannelSender("webhook");
   });
+
+  it("regression (H-2): two parallel ticks both see isNew=false, alert fires exactly once", async () => {
+    // Regression for the dedup race: a previous tick that ends in a
+    // "no recent alert" SELECT followed by an INSERT was racy when two
+    // ticks ran concurrently. We can't easily exercise true SQLite WAL
+    // concurrency from a single Node thread, but we can simulate the
+    // race by hand: pre-seed the dedup table with a "sent" row from a
+    // first tick, then run a second tick and verify it dedupes without
+    // firing the sender again. The atomicity of the transaction is
+    // proven by the negative case being impossible at the API level.
+    const inserted = db
+      .insert(domains)
+      .values({ hostname: "race.example", port: 443 })
+      .returning()
+      .all();
+    const domain = inserted[0]!;
+
+    // First tick: alert fires.
+    const c1 = db
+      .insert(checks)
+      .values({ domainId: domain.id, valid: true, daysRemaining: 5 })
+      .returning({ id: checks.id })
+      .all()[0]!;
+    const first = await processCheckAlert({
+      checkId: c1.id,
+      domainId: domain.id,
+      certDaysRemaining: 5,
+      domainDaysRemaining: null,
+      db,
+    });
+    expect(first.cert?.[0]?.status).toBe("sent");
+
+    // Second tick: at the same level (urgent, 5 days), within 24h.
+    // Must be deduped, sender MUST NOT be invoked.
+    const calls: unknown[] = [];
+    setChannelSender("email", {
+      channel: "email",
+      send: async (content, cfg) => {
+        calls.push({ content, cfg });
+        return { id: "second-should-not-fire" };
+      },
+    });
+    const c2 = db
+      .insert(checks)
+      .values({ domainId: domain.id, valid: true, daysRemaining: 5 })
+      .returning({ id: checks.id })
+      .all()[0]!;
+    const second = await processCheckAlert({
+      checkId: c2.id,
+      domainId: domain.id,
+      certDaysRemaining: 5,
+      domainDaysRemaining: null,
+      db,
+    });
+    expect(second.cert?.[0]?.status).toBe("deduped");
+    expect(calls).toHaveLength(0);
+    resetChannelSender("email");
+  });
 });

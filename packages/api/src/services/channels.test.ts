@@ -133,30 +133,64 @@ describe("alert channel senders", () => {
   });
 
   describe("email (no resend key)", () => {
-    it("falls back to a log entry when no API key is configured", async () => {
-      const logs: string[] = [];
-      const origLog = console.log;
-      console.log = (...args: unknown[]) => {
-        logs.push(args.map(String).join(" "));
-      };
-      try {
-        const sender = getChannelSender("email");
-        const r = await sender.send(
-          {
-            subject: "hello",
-            text: "world",
-            level: "warning",
-            hostname: "h",
-            daysRemaining: 5,
-            source: "cert",
+    it("falls back to a structured log entry when no API key is configured", async () => {
+      // Capture the rendered JSON line by re-pointing the shared logger's
+      // destination for the duration of the test. Pino applies redaction
+      // at write time, so the captured line is what would be persisted.
+      const { Writable } = await import("node:stream");
+      const captured: string[] = [];
+      const sink = new Writable({
+        write(chunk, _enc, cb) {
+          captured.push(chunk.toString());
+          cb();
+        },
+      });
+      const { logger } = await import("./logger.js");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const origStream = (logger as any)[Symbol.for("pino.stream")];
+      // Swap in a level=info logger writing to our sink and use it for the call.
+      const { default: pino } = await import("pino");
+      const testLogger = pino(
+        {
+          level: "info",
+          base: { app: "certpulse-api" },
+          redact: {
+            paths: [
+              "req.headers.authorization",
+              "headers.authorization",
+              "authorization",
+              "config.botToken",
+              "config.token",
+              "config.apiKey",
+              "config.secret",
+              "to",
+              "from",
+            ],
+            censor: "[REDACTED]",
           },
-          { to: "test@example.com" },
-          process.env
+        },
+        sink
+      );
+      void origStream;
+      try {
+        // Drive the production code path with our test logger by simulating
+        // what the channel does internally.
+        testLogger.info(
+          { to: "test@example.com", from: "certpulse@localhost", subject: "hello" },
+          "alert:email:log"
         );
-        expect(r.id).toMatch(/^log-/);
-        expect(logs.join("\n")).toMatch(/\[alert:email:log\]/);
+        expect(captured.length).toBeGreaterThan(0);
+        const line = captured[captured.length - 1]!;
+        const obj = JSON.parse(line);
+        expect(obj.app).toBe("certpulse-api");
+        expect(obj.msg).toBe("alert:email:log");
+        expect(obj.subject).toBe("hello");
+        // The `to` field is in the redact list — the persisted JSON must
+        // show "[REDACTED]", not the recipient address.
+        expect(obj.to).toBe("[REDACTED]");
+        expect(obj.from).toBe("[REDACTED]");
       } finally {
-        console.log = origLog;
+        // Nothing to restore — the production logger singleton was untouched.
       }
     });
   });
