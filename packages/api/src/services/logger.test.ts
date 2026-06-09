@@ -22,7 +22,13 @@ describe("logger (L-6)", () => {
     expect(typeof obj.time).toBe("number");
   });
 
-  it("respects LOG_LEVEL=error to silence info", () => {
+  // Regression for the original test (logger.test.ts:39): the previous
+  // assertion `expect(lines.length).toBeGreaterThan(0)` was a no-op that
+  // passed even when LOG_LEVEL was unset (so info logging was NOT
+  // silenced). This test now sets the level explicitly on the logger
+  // instance — independent of process.env.LOG_LEVEL — and asserts that
+  // info is dropped while error is kept. (Copilot review: logger.test.ts:39.)
+  it("respects level=error to silence info, but keeps error lines", () => {
     const lines: string[] = [];
     const sink = new Writable({
       write(chunk, _enc, cb) {
@@ -30,11 +36,19 @@ describe("logger (L-6)", () => {
         cb();
       },
     });
-    const testLogger = pino({ level: process.env.LOG_LEVEL ?? "info" }, sink);
+    // Note: we pass `level` directly to pino, NOT via process.env,
+    // so the test is deterministic and doesn't depend on the
+    // surrounding shell's env.
+    const testLogger = pino(
+      { level: "error", base: { app: "certpulse-api" } },
+      sink
+    );
     testLogger.info("should not appear");
     testLogger.error("should appear");
-    // If LOG_LEVEL is unset, info appears; if it's "error", only the
-    // second line is captured. We only assert on the lower bound.
-    expect(lines.length).toBeGreaterThan(0);
+    // Exactly one line: the error. info must be silenced at level=error.
+    expect(lines).toHaveLength(1);
+    const obj = JSON.parse(lines[0]!);
+    expect(obj.msg).toBe("should appear");
+    expect(obj.level).toBe(50); // pino numeric level for "error"
   });
 });

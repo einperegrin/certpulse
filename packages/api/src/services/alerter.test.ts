@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createInMemoryDb, type DB } from "../db/index.js";
 import { runSqlMigrations } from "../db/sqlmigrate.js";
-import { checks, domains, alertChannels } from "../db/schema.js";
+import { alerts, checks, domains, alertChannels } from "../db/schema.js";
 import Database from "better-sqlite3";
 import {
   determineAlertLevel,
@@ -398,5 +398,47 @@ describe("alert dispatch (multi-channel + dedup)", () => {
     expect(second.cert?.[0]?.status).toBe("deduped");
     expect(calls).toHaveLength(0);
     resetChannelSender("email");
+  });
+
+  // Regression for the audit-log bug Copilot flagged (alerter.ts:359):
+  // the dispatch path used to INSERT a "pending" claim row inside the
+  // dedup transaction and then INSERT a second "sent" row after the
+  // sender returned, leaving the "pending" row in the table forever.
+  // We now UPDATE the pending row in place via recordAlertRow's
+  // `pendingId` path, so a successful dispatch leaves exactly one row.
+  it("one alerts row per dispatch (pending row is resolved in place)", async () => {
+    const inserted = db
+      .insert(domains)
+      .values({ hostname: "audit.example", port: 443 })
+      .returning()
+      .all();
+    const domain = inserted[0]!;
+    const c = db
+      .insert(checks)
+      .values({ domainId: domain.id, valid: true, daysRemaining: 5 })
+      .returning({ id: checks.id })
+      .all()[0]!;
+    const out = await processCheckAlert({
+      checkId: c.id,
+      domainId: domain.id,
+      certDaysRemaining: 5,
+      domainDaysRemaining: null,
+      db,
+    });
+    expect(out.cert?.[0]?.status).toBe("sent");
+
+    // Exactly one alerts row for this (domain, channel=email, source=cert),
+    // and it must NOT be left in "pending" status.
+    const rows = db.select().from(alerts).all();
+    const emailRows = rows.filter(
+      (r) =>
+        r.domainId === domain.id &&
+        r.channel === "email" &&
+        r.source === "cert",
+    );
+    expect(emailRows).toHaveLength(1);
+    expect(emailRows[0]!.status).toBe("sent");
+    // sentAt is populated on success.
+    expect(emailRows[0]!.sentAt).not.toBeNull();
   });
 });

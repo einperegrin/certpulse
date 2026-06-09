@@ -224,27 +224,26 @@ async function dispatchOne(
       channel: channelName,
       level: level.level,
     };
-    // Atomic dedup (H-2): the SELECT, the claim INSERT, and the
-    // dedup-bookkeeping INSERT all happen inside one transaction.
-    // A concurrent tick that runs while this transaction is open
-    // blocks on the SQLite writer-lock; when it gets the lock, the
-    // claim row is committed and `recordAlertAttempt` returns false,
-    // so the second tick sees the dedup. The claim row is created
-    // with status="pending" and is later updated in place once the
-    // sender returns (status="sent"/"failed"/"skipped") via
-    // `recordAlertRow`. If the process dies between claim and update
-    // the row stays "pending" — the dedup window then suppresses the
-    // next attempt correctly, so no alert is lost, but the audit log
-    // may show one "pending" row that never resolved. (The scheduler
-    // tick retry on next minute is the recovery path.)
-    const isNew = db.transaction((tx) => {
+    // Atomic dedup (H-2): the SELECT and the claim INSERT both happen
+    // inside one transaction. A concurrent tick that runs while this
+    // transaction is open blocks on the SQLite writer-lock; when it
+    // gets the lock, the claim row is committed and
+    // `recordAlertAttempt` returns false, so the second tick sees the
+    // dedup. The claim row is created with status="pending" and is
+    // resolved in place once the sender returns (status="sent"/
+    // "failed"/"skipped") via `recordAlertRow` with `pendingId` set —
+    // we UPDATE the same row instead of INSERTing a duplicate, so the
+    // alerts table has exactly one row per dispatch attempt and the
+    // audit log stays clean. (Copilot review: alerter.ts:359.)
+    const claim = db.transaction((tx) => {
       const fresh = recordAlertAttempt(tx as DB, {
         ...dedupKey,
         dedupWindowHours: 24,
       });
       if (!fresh) {
         // Insert the deduped row inside the same transaction so the
-        // audit log still records the suppressed attempt.
+        // audit log still records the suppressed attempt. No pending
+        // row was created, so no `pendingId` to update.
         try {
           tx.insert(alerts)
             .values({
@@ -261,13 +260,16 @@ async function dispatchOne(
           // want dedup bookkeeping to crash an alert dispatch.
           logger.error({ err }, "failed to record deduped row");
         }
-        return false;
+        return { isNew: false, pendingId: undefined as number | undefined };
       }
       // Claim the dedup window by inserting a "pending" row inside the
       // transaction. A concurrent tick that runs `recordAlertAttempt`
-      // after this commit will see this row and dedupe.
+      // after this commit will see this row and dedupe. We capture
+      // the row id via RETURNING so the dispatch loop can resolve it
+      // to "sent"/"failed"/"skipped" without a second INSERT.
+      let pendingId: number | undefined;
       try {
-        tx.insert(alerts)
+        const inserted = tx.insert(alerts)
           .values({
             domainId,
             checkId,
@@ -276,13 +278,15 @@ async function dispatchOne(
             level: level.level,
             status: "pending",
           })
-          .run();
+          .returning({ id: alerts.id })
+          .all();
+        pendingId = inserted[0]?.id;
       } catch (err) {
         logger.error({ err }, "failed to record pending claim row");
       }
-      return true;
+      return { isNew: true, pendingId };
     });
-    if (!isNew) {
+    if (!claim.isNew) {
       results.push({ channel: channelName, source, level: level.level, status: "deduped" });
       continue;
     }
@@ -319,6 +323,7 @@ async function dispatchOne(
           channel: channelName, level: level.level,
           status: "skipped",
           error: `Missing required config: ${requiredKey}`,
+          pendingId: claim.pendingId,
         });
         continue;
       }
@@ -334,6 +339,7 @@ async function dispatchOne(
         level: level.level,
         status: "failed",
         error: sendRes.error,
+        pendingId: claim.pendingId,
       });
     } else {
       results.push({ channel: channelName, source, level: level.level, status: "sent", messageId: sendRes.id });
@@ -345,6 +351,7 @@ async function dispatchOne(
         level: level.level,
         status: "sent",
         messageId: sendRes.id,
+        pendingId: claim.pendingId,
       });
     }
   }
@@ -360,10 +367,42 @@ interface RecordAlertRowInput {
   status: "sent" | "failed" | "skipped" | "deduped";
   messageId?: string;
   error?: string;
+  /**
+   * If set, UPDATE the existing "pending" claim row to the final status
+   * instead of INSERTing a new row. The atomic-dedup path (H-2) inserts
+   * a pending row inside its claim transaction and hands the row's id
+   * back here; the dispatch loop then UPDATEs that same row with the
+   * final status. Without this, every successful alert would leave
+   * behind a permanent "pending" row in addition to the "sent" row,
+   * inflating the alerts table and misleading the audit log.
+   * (Copilot review: alerter.ts:359.)
+   */
+  pendingId?: number;
 }
 
 function recordAlertRow(db: DB, input: RecordAlertRowInput): void {
   try {
+    if (input.pendingId !== undefined) {
+      // Resolve the pending claim in place. sentAt is set only on
+      // successful send; the schema leaves it null for failed/skipped.
+      // Note: the `alerts` schema doesn't have a `messageId` column
+      // (the channel-specific id lives in `error`/`sentAt` indirectly,
+      // and the canonical record is the row in this table), so the
+      // messageId field is dropped here — it was already informational
+      // in the INSERT path. (Copilot review: alerter.ts:359.)
+      db.update(alerts)
+        .set({
+          status: input.status,
+          sentAt:
+            input.status === "sent"
+              ? new Date().toISOString()
+              : null,
+          error: input.error ?? null,
+        })
+        .where(eq(alerts.id, input.pendingId))
+        .run();
+      return;
+    }
     db.insert(alerts)
       .values({
         domainId: input.domainId,

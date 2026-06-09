@@ -14,6 +14,19 @@ let task: ScheduledTask | null = null;
 // 10s of domains, much less in practice).
 const TICK_TIMEOUT_MS = 30 * 60 * 1000;
 
+/**
+ * Format `TICK_TIMEOUT_MS` as a SQLite `datetime('now', '-N seconds')`
+ * modifier. SQLite's `strftime` is the canonical way to produce a
+ * date arithmetic clause that is comparable against the column's
+ * `datetime('now')` text. Returning a raw `'-30 minutes'` here would
+ * drift from the JS constant and is exactly the bug Copilot flagged
+ * (scheduler.ts:15). We compute seconds because the constant is in ms
+ * and the modifier is in seconds — keeping the conversion here means
+ * there's only one source of truth for the threshold. (Copilot review:
+ * scheduler.ts:56.)
+ */
+const TICK_TIMEOUT_SQL = `-${Math.floor(TICK_TIMEOUT_MS / 1000)} seconds`;
+
 export function getCheckIntervalMinutes(): number {
   const raw = process.env.CHECK_INTERVAL;
   if (!raw) return 60;
@@ -59,7 +72,7 @@ function tryClaimSchedulerLock(db: DB): boolean {
     .where(
       and(
         eq(schedulerState.key, "running"),
-        sql`(${schedulerState.value} = '0' OR ${schedulerState.updatedAt} < datetime('now', '-30 minutes'))`
+        sql`(${schedulerState.value} = '0' OR ${schedulerState.updatedAt} < datetime('now', ${TICK_TIMEOUT_SQL}))`
       )
     )
     .run();
