@@ -27,6 +27,22 @@ const ALERT_LEVELS: AlertLevelInfo[] = [
 const SUBJECT_PREFIX_CERT = "[CertPulse]";
 const SUBJECT_PREFIX_DOMAIN = "[CertPulse Domain]";
 
+/**
+ * Format a JS Date in SQLite's `datetime('now')` form
+ * (`YYYY-MM-DD HH:MM:SS` in UTC). The schema's DEFAULT clauses use
+ * this exact format for timestamp columns, so writing ISO-8601 with a
+ * `T` separator breaks lexicographic text comparison in WHERE clauses
+ * (an ISO string with `T` is lexicographically greater than a SQLite
+ * `YYYY-MM-DD HH:MM:SS` even when the underlying instant is older).
+ * (Copilot review: alerter.ts:84.)
+ */
+function sqliteNowOffset(offsetMs: number): string {
+  return new Date(Date.now() + offsetMs)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
+}
+
 export function determineAlertLevel(daysRemaining: number | null | undefined): AlertLevelInfo | null {
   if (daysRemaining === null || daysRemaining === undefined) return null;
   if (daysRemaining <= 0) return ALERT_LEVELS[0];
@@ -80,7 +96,13 @@ function recordAlertAttempt(
     dedupWindowHours: number;
   }
 ): boolean {
-  const cutoff = new Date(Date.now() - input.dedupWindowHours * 3600 * 1000).toISOString();
+  // SQLite stores `created_at` as `datetime('now')` — i.e. UTC text in
+  // `YYYY-MM-DD HH:MM:SS` form. A JS `toISOString()` is lexicographically
+  // greater (`T` > ` `, plus a `.000Z` suffix) so a cutoff that mixes
+  // the two formats can be > newer alerts and miss dedup hits. Format
+  // the cutoff the same way the column stores it. (Copilot review:
+  // alerter.ts:84.)
+  const cutoff = sqliteNowOffset(-input.dedupWindowHours * 3600 * 1000);
   const recent = db
     .select({ id: alerts.id })
     .from(alerts)

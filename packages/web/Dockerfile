@@ -32,7 +32,14 @@ RUN chown -R nginx:nginx /var/cache/nginx /var/log/nginx /usr/share/nginx/html
 COPY --from=build --chown=nginx:nginx /app/packages/web/dist /usr/share/nginx/html
 COPY --chown=root:root packages/web/nginx.conf /etc/nginx/conf.d/default.conf
 
+# Install the hardened entrypoint. The stock nginx image has no
+# entrypoint of its own — without this, `docker-entrypoint.sh` would
+# never run in production and the docker-image-level hardening would
+# not be applied. (Copilot review: packages/web/Dockerfile:38.)
+COPY --chown=root:root --chmod=0755 packages/web/docker-entrypoint.sh /docker-entrypoint.sh
+
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
   CMD wget -q -O- http://localhost/health >/dev/null 2>&1 || exit 1
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

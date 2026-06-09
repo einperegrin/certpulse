@@ -176,7 +176,10 @@ export async function runChecksForAllEnabledDomains(
   db: DB = getDb(),
   options: RunCheckOptions = {}
 ): Promise<RunCheckOutcome[]> {
-  const concurrency = options.concurrency ?? 5;
+  // Clamp to at least 1: a zero or negative `concurrency` would cause
+  // `for (i += concurrency)` to spin forever. (Copilot review:
+  // checker-runner.ts:179.)
+  const concurrency = Math.max(1, options.concurrency ?? 5);
   const rows = db
     .select()
     .from(domains)

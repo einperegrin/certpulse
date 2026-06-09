@@ -84,4 +84,67 @@ describe("retention job (M-1)", () => {
     expect(r.deletedChecks).toBe(1);
     expect(r.deletedAlerts).toBe(0); // 100d < 365d default
   });
+
+  // Regression: ensure the env-var override path the PR body advertises
+  // actually works. (Copilot review: retention.ts:30.)
+  it("honours RETENTION_DAYS / ALERT_RETENTION_DAYS env vars", () => {
+    const prevCheck = process.env.RETENTION_DAYS;
+    const prevAlert = process.env.ALERT_RETENTION_DAYS;
+    process.env.RETENTION_DAYS = "1";
+    process.env.ALERT_RETENTION_DAYS = "1";
+    try {
+      const { db } = makeDb();
+      const domain = db
+        .insert(domains)
+        .values({ hostname: "r.example", port: 443 })
+        .returning()
+        .all()[0]!;
+      const c = db
+        .insert(checks)
+        .values({ domainId: domain.id, valid: true })
+        .returning({ id: checks.id })
+        .all()[0]!;
+      // 2-day-old rows: env=1 day, so they should be deleted.
+      const twoDaysAgo = new Date(Date.now() - 2 * 86400_000).toISOString();
+      db.insert(checks).values({ domainId: domain.id, valid: true, checkedAt: twoDaysAgo }).run();
+      db.insert(alerts).values({
+        domainId: domain.id, checkId: c.id, level: "warning", channel: "email", source: "cert", status: "sent",
+        createdAt: twoDaysAgo,
+      }).run();
+
+      const r = runRetention(db);
+      expect(r.deletedChecks).toBe(1);
+      expect(r.deletedAlerts).toBe(1);
+    } finally {
+      if (prevCheck === undefined) delete process.env.RETENTION_DAYS;
+      else process.env.RETENTION_DAYS = prevCheck;
+      if (prevAlert === undefined) delete process.env.ALERT_RETENTION_DAYS;
+      else process.env.ALERT_RETENTION_DAYS = prevAlert;
+    }
+  });
+
+  it("falls back to defaults when env vars are non-numeric or out of range", () => {
+    const cases = ["", "abc", "0", "-5", "99999"];
+    for (const v of cases) {
+      const prev = process.env.RETENTION_DAYS;
+      process.env.RETENTION_DAYS = v;
+      try {
+        const { db } = makeDb();
+        const domain = db
+          .insert(domains)
+          .values({ hostname: "r.example", port: 443 })
+          .returning()
+          .all()[0]!;
+        // 100-day-old check: should be deleted (default 90d applies,
+        // not whatever nonsense the env var was set to).
+        const old = new Date(Date.now() - 100 * 86400_000).toISOString();
+        db.insert(checks).values({ domainId: domain.id, valid: true, checkedAt: old }).run();
+        const r = runRetention(db);
+        expect(r.deletedChecks).toBe(1);
+      } finally {
+        if (prev === undefined) delete process.env.RETENTION_DAYS;
+        else process.env.RETENTION_DAYS = prev;
+      }
+    }
+  });
 });
