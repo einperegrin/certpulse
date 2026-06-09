@@ -21,6 +21,22 @@ describe("scheduler helpers", () => {
     expect(getCheckIntervalMinutes()).toBe(60);
   });
 
+  it("caps CHECK_INTERVAL at 24h (M-10) and falls back to 60 on garbage", () => {
+    process.env.CHECK_INTERVAL = "9999";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "1440";
+    expect(getCheckIntervalMinutes()).toBe(1440);
+    process.env.CHECK_INTERVAL = "1441";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "not-a-number";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "0";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    process.env.CHECK_INTERVAL = "-5";
+    expect(getCheckIntervalMinutes()).toBe(60);
+    delete process.env.CHECK_INTERVAL;
+  });
+
   it("builds the expected cron expression", () => {
     expect(buildCronExpression(15)).toBe("*/15 * * * *");
     expect(buildCronExpression(60)).toBe("0 */1 * * *");
@@ -83,5 +99,30 @@ describe("cron firing", () => {
     expect(s2.task).toBe(s1.task);
     stopScheduler();
     expect(isSchedulerRunning()).toBe(false);
+  });
+
+  it("stale-lock reclaim works when previous tick wrote updatedAt in SQLite datetime format (H-3)", async () => {
+    // Seed scheduler_state with running=1 and updatedAt 31 minutes ago,
+    // formatted as SQLite's `datetime('now', '-31 minutes')` would be.
+    // If scheduler.ts wrote ISO-8601 with a `T` separator (the bug Copilot
+    // flagged), the comparison `updated_at < datetime('now', '-30 minutes')`
+    // would lexicographically fail because 'T' > ' ' in ASCII, leaving the
+    // scheduler stuck. With sqliteNow() the reclaim should succeed.
+    const { schedulerState } = await import("../db/schema.js");
+    const stale = new Date(Date.now() - 31 * 60 * 1000)
+      .toISOString()
+      .replace("T", " ")
+      .replace(/\.\d{3}Z$/, "");
+    db.insert(schedulerState)
+      .values({ key: "running", value: "1", updatedAt: stale })
+      .onConflictDoNothing()
+      .run();
+
+    db.insert(domains)
+      .values({ hostname: "localhost", port: serverPort, enabled: true })
+      .run();
+
+    const result = await tickChecks(db, { rejectUnauthorized: false });
+    expect(result.ran).toBe(1);
   });
 });

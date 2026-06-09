@@ -6,6 +6,7 @@ import {
   type ChannelName,
   getChannelSender,
 } from "./channels.js";
+import { logger } from "./logger.js";
 
 export type AlertLevel = "warning" | "urgent" | "critical" | "emergency";
 export type AlertSource = "cert" | "domain";
@@ -25,6 +26,22 @@ const ALERT_LEVELS: AlertLevelInfo[] = [
 
 const SUBJECT_PREFIX_CERT = "[CertPulse]";
 const SUBJECT_PREFIX_DOMAIN = "[CertPulse Domain]";
+
+/**
+ * Format a JS Date in SQLite's `datetime('now')` form
+ * (`YYYY-MM-DD HH:MM:SS` in UTC). The schema's DEFAULT clauses use
+ * this exact format for timestamp columns, so writing ISO-8601 with a
+ * `T` separator breaks lexicographic text comparison in WHERE clauses
+ * (an ISO string with `T` is lexicographically greater than a SQLite
+ * `YYYY-MM-DD HH:MM:SS` even when the underlying instant is older).
+ * (Copilot review: alerter.ts:84.)
+ */
+function sqliteNowOffset(offsetMs: number): string {
+  return new Date(Date.now() + offsetMs)
+    .toISOString()
+    .replace("T", " ")
+    .replace(/\.\d{3}Z$/, "");
+}
 
 export function determineAlertLevel(daysRemaining: number | null | undefined): AlertLevelInfo | null {
   if (daysRemaining === null || daysRemaining === undefined) return null;
@@ -57,30 +74,50 @@ export interface ProcessCheckAlertOutput {
   domain: ChannelDispatchResult[] | null;
 }
 
-function wasRecentlyAlerted(
-  domainId: number,
-  source: AlertSource,
-  channel: ChannelName,
-  level: AlertLevel,
-  withinHours: number,
-  db: DB
+/**
+ * Returns true when no recent alert exists for this (domain, source,
+ * channel, level) tuple within the dedup window. The check and the
+ * subsequent `INSERT` in `recordAlertRow` are now performed inside a
+ * single SQLite transaction so two parallel ticks cannot both see
+ * "no recent alert" and both fire. (H-2 fix.)
+ *
+ * We can't get a strict 24h UNIQUE constraint in SQLite, so atomicity
+ * comes from the transaction wrapping the SELECT and INSERT — SQLite
+ * serialises writers, so a second concurrent caller will see the row
+ * committed by the first.
+ */
+function recordAlertAttempt(
+  db: DB,
+  input: {
+    domainId: number;
+    source: AlertSource;
+    channel: ChannelName;
+    level: AlertLevel;
+    dedupWindowHours: number;
+  }
 ): boolean {
-  const cutoff = new Date(Date.now() - withinHours * 3600 * 1000).toISOString();
-  const row = db
+  // SQLite stores `created_at` as `datetime('now')` — i.e. UTC text in
+  // `YYYY-MM-DD HH:MM:SS` form. A JS `toISOString()` is lexicographically
+  // greater (`T` > ` `, plus a `.000Z` suffix) so a cutoff that mixes
+  // the two formats can be > newer alerts and miss dedup hits. Format
+  // the cutoff the same way the column stores it. (Copilot review:
+  // alerter.ts:84.)
+  const cutoff = sqliteNowOffset(-input.dedupWindowHours * 3600 * 1000);
+  const recent = db
     .select({ id: alerts.id })
     .from(alerts)
     .where(
       and(
-        eq(alerts.domainId, domainId),
-        eq(alerts.source, source),
-        eq(alerts.channel, channel),
-        eq(alerts.level, level),
+        eq(alerts.domainId, input.domainId),
+        eq(alerts.source, input.source),
+        eq(alerts.channel, input.channel),
+        eq(alerts.level, input.level),
         gte(alerts.createdAt, cutoff)
       )
     )
     .limit(1)
     .all();
-  return row.length > 0;
+  return recent.length === 0;
 }
 
 function channelsForDomain(domainId: number, db: DB): AlertChannel[] {
@@ -176,16 +213,81 @@ async function dispatchOne(
 
   for (const ch of dispatchList) {
     const channelName = ch.channel as ChannelName;
-    if (wasRecentlyAlerted(domainId, source, channelName, level.level, 24, db)) {
-      results.push({ channel: channelName, source, level: level.level, status: "deduped" });
-      recordAlertRow(db, {
-        domainId,
-        checkId,
-        source,
-        channel: channelName,
-        level: level.level,
-        status: "deduped",
+    // Atomic dedup (H-2): wrap the "is there a recent alert?" check and
+    // the INSERT of the deduped record in a single transaction. If a
+    // concurrent tick has already recorded an alert for this tuple, the
+    // SELECT inside the transaction will see it and we mark the channel
+    // as deduped without firing.
+    const dedupKey = {
+      domainId,
+      source,
+      channel: channelName,
+      level: level.level,
+    };
+    // Atomic dedup (H-2): the SELECT and the claim INSERT both happen
+    // inside one transaction. A concurrent tick that runs while this
+    // transaction is open blocks on the SQLite writer-lock; when it
+    // gets the lock, the claim row is committed and
+    // `recordAlertAttempt` returns false, so the second tick sees the
+    // dedup. The claim row is created with status="pending" and is
+    // resolved in place once the sender returns (status="sent"/
+    // "failed"/"skipped") via `recordAlertRow` with `pendingId` set —
+    // we UPDATE the same row instead of INSERTing a duplicate, so the
+    // alerts table has exactly one row per dispatch attempt and the
+    // audit log stays clean. (Copilot review: alerter.ts:359.)
+    const claim = db.transaction((tx) => {
+      const fresh = recordAlertAttempt(tx as DB, {
+        ...dedupKey,
+        dedupWindowHours: 24,
       });
+      if (!fresh) {
+        // Insert the deduped row inside the same transaction so the
+        // audit log still records the suppressed attempt. No pending
+        // row was created, so no `pendingId` to update.
+        try {
+          tx.insert(alerts)
+            .values({
+              domainId,
+              checkId,
+              source,
+              channel: channelName,
+              level: level.level,
+              status: "deduped",
+            })
+            .run();
+        } catch (err) {
+          // Same swallow as the standalone recordAlertRow — we never
+          // want dedup bookkeeping to crash an alert dispatch.
+          logger.error({ err }, "failed to record deduped row");
+        }
+        return { isNew: false, pendingId: undefined as number | undefined };
+      }
+      // Claim the dedup window by inserting a "pending" row inside the
+      // transaction. A concurrent tick that runs `recordAlertAttempt`
+      // after this commit will see this row and dedupe. We capture
+      // the row id via RETURNING so the dispatch loop can resolve it
+      // to "sent"/"failed"/"skipped" without a second INSERT.
+      let pendingId: number | undefined;
+      try {
+        const inserted = tx.insert(alerts)
+          .values({
+            domainId,
+            checkId,
+            source,
+            channel: channelName,
+            level: level.level,
+            status: "pending",
+          })
+          .returning({ id: alerts.id })
+          .all();
+        pendingId = inserted[0]?.id;
+      } catch (err) {
+        logger.error({ err }, "failed to record pending claim row");
+      }
+      return { isNew: true, pendingId };
+    });
+    if (!claim.isNew) {
+      results.push({ channel: channelName, source, level: level.level, status: "deduped" });
       continue;
     }
     let cfg: Record<string, unknown> = {};
@@ -221,6 +323,7 @@ async function dispatchOne(
           channel: channelName, level: level.level,
           status: "skipped",
           error: `Missing required config: ${requiredKey}`,
+          pendingId: claim.pendingId,
         });
         continue;
       }
@@ -236,6 +339,7 @@ async function dispatchOne(
         level: level.level,
         status: "failed",
         error: sendRes.error,
+        pendingId: claim.pendingId,
       });
     } else {
       results.push({ channel: channelName, source, level: level.level, status: "sent", messageId: sendRes.id });
@@ -247,6 +351,7 @@ async function dispatchOne(
         level: level.level,
         status: "sent",
         messageId: sendRes.id,
+        pendingId: claim.pendingId,
       });
     }
   }
@@ -262,10 +367,42 @@ interface RecordAlertRowInput {
   status: "sent" | "failed" | "skipped" | "deduped";
   messageId?: string;
   error?: string;
+  /**
+   * If set, UPDATE the existing "pending" claim row to the final status
+   * instead of INSERTing a new row. The atomic-dedup path (H-2) inserts
+   * a pending row inside its claim transaction and hands the row's id
+   * back here; the dispatch loop then UPDATEs that same row with the
+   * final status. Without this, every successful alert would leave
+   * behind a permanent "pending" row in addition to the "sent" row,
+   * inflating the alerts table and misleading the audit log.
+   * (Copilot review: alerter.ts:359.)
+   */
+  pendingId?: number;
 }
 
 function recordAlertRow(db: DB, input: RecordAlertRowInput): void {
   try {
+    if (input.pendingId !== undefined) {
+      // Resolve the pending claim in place. sentAt is set only on
+      // successful send; the schema leaves it null for failed/skipped.
+      // Note: the `alerts` schema doesn't have a `messageId` column
+      // (the channel-specific id lives in `error`/`sentAt` indirectly,
+      // and the canonical record is the row in this table), so the
+      // messageId field is dropped here — it was already informational
+      // in the INSERT path. (Copilot review: alerter.ts:359.)
+      db.update(alerts)
+        .set({
+          status: input.status,
+          sentAt:
+            input.status === "sent"
+              ? new Date().toISOString()
+              : null,
+          error: input.error ?? null,
+        })
+        .where(eq(alerts.id, input.pendingId))
+        .run();
+      return;
+    }
     db.insert(alerts)
       .values({
         domainId: input.domainId,
@@ -279,7 +416,7 @@ function recordAlertRow(db: DB, input: RecordAlertRowInput): void {
       })
       .run();
   } catch (err) {
-    console.error(`[alerter] failed to record alert row:`, err);
+    logger.error({ err }, "failed to record alert row");
   }
 }
 
