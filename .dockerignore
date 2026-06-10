@@ -1,0 +1,35 @@
+# Repository-level .dockerignore. Each package's Dockerfile also does its
+# own targeted COPY, but this gives us a safety net for any future image
+# that copies from the repo root (e.g. CI build, dev sandbox).
+#
+# Blocked from EVERY image built from this repo:
+node_modules
+**/node_modules
+.git
+.github
+.vscode
+.idea
+
+# Test artefacts / coverage
+coverage
+**/coverage
+**/*.test.ts
+**/*.spec.ts
+**/test
+**/tests
+**/__tests__
+
+# Dev tooling
+**/.vite
+**/dist-ssr
+**/*.local
+**/.env.local
+**/.env.*.local
+
+# Documentation / landing (web Dockerfile builds dist from src directly)
+landing/dist
+landing/node_modules
+
+# OS junk
+.DS_Store
+Thumbs.db

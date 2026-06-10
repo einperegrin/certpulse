@@ -5,6 +5,8 @@ import { checkSSL } from "./checker.js";
 import { processCheckAlert, type ChannelDispatchResult } from "./alerter.js";
 import { lookupDomainExpiry } from "./whois.js";
 import { isPrivateAddress } from "./ssrf-guard.js";
+import { checksTotal, checkDurationSeconds } from "../lib/metrics.js";
+import { logger } from "./logger.js";
 
 /**
  * Error thrown when a check is denied because the hostname resolves to a
@@ -67,10 +69,22 @@ export async function runCheckForDomain(
     }
   }
 
-  const result = await checkSSL(hostname, port, {
-    rejectUnauthorized: options.rejectUnauthorized,
-    timeoutMs: options.timeoutMs,
-  });
+  const checkTimer = checkDurationSeconds.startTimer();
+  let result;
+  try {
+    result = await checkSSL(hostname, port, {
+      rejectUnauthorized: options.rejectUnauthorized,
+      timeoutMs: options.timeoutMs,
+    });
+  } catch (err) {
+    // Network/SSL error → mark the check as a failure for the counter
+    // and re-throw so the caller can decide what to do.
+    checksTotal.inc({ result: "failure" });
+    checkTimer();
+    throw err;
+  }
+  checkTimer();
+  checksTotal.inc({ result: result.valid ? "success" : "failure" });
 
   // Run the domain expiry lookup in parallel with the DB insert; we don't
   // need its result to persist the cert side of the check.
@@ -121,7 +135,7 @@ export async function runCheckForDomain(
         .where(eq(checks.id, checkId))
         .run();
     } catch (err) {
-      console.error(`[checker-runner] failed to persist whois result for check ${checkId}:`, err);
+      logger.error({ err, checkId }, "failed to persist whois result");
     }
   }
 
@@ -149,7 +163,7 @@ export async function runCheckForDomain(
     });
     outcome.alerts = { cert: alertOut.cert ?? [], domain: alertOut.domain ?? [] };
   } catch (err) {
-    console.error(`[alerter] error processing check ${checkId}:`, err);
+    logger.error({ err, checkId }, "alerter error processing check");
   }
 
   return outcome;
