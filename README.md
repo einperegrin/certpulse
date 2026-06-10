@@ -169,9 +169,26 @@ The compose stack is locked down by default:
 
 - **No host port on the api** — all traffic goes through nginx on `WEB_PORT`. Reach the api from the host with `docker compose exec api ...`.
 - **Read-only root filesystem** on both services. The only writable path inside the api is `/app/data` (a named volume for SQLite).
-- **`cap_drop: ALL`** + **`no-new-privileges:true`** on both services — drop every Linux capability, refuse setuid escalation.
-- **Dedicated unprivileged user** in the api image (UID/GID 10001, no shell, no home).
+- **`cap_drop: ALL`** + **`no-new-privileges:true`** on both services — drop every Linux capability, refuse setuid escalation. The api additionally adds back `CAP_CHOWN`, `CAP_SETUID`, and `CAP_SETGID` so its entrypoint can repair the ownership of `/app/data` on volumes inherited from older images and drop to the unprivileged user. With no-new-privileges, those capabilities cannot be inherited by any child process — they are a one-shot tool used by PID 1.
+- **Dedicated unprivileged user** in the api image (UID/GID 10001, no shell, no home). The api process runs as that user; the entrypoint runs as root just long enough to chown the data directory and call `setpriv`.
 - **Healthchecks** on both services. The api hits its own `/health`; the web hits `/health` through nginx.
+
+## ⬆️ Upgrading
+
+The api image runs as a dedicated unprivileged user (UID/GID 10001). On every start, the entrypoint repairs the ownership of `/app/data` so volumes inherited from older images (where the file was provisioned as `root`) become writable automatically.
+
+If you ever see `SqliteError: attempt to write a readonly database` in the api logs after an upgrade, the most likely cause is a host bind mount whose contents are owned by the host user. Either:
+
+```bash
+# Re-run the entrypoint's repair manually:
+docker compose exec api chown -R 10001:10001 /app/data
+
+# Or, if you prefer to drop the old database and start clean
+# (you will lose any registered domains — re-add them afterwards):
+docker compose down
+docker volume rm certpulse_certpulse-data
+docker compose up -d
+```
 
 ## 🔐 Authentication (v0.2+)
 
