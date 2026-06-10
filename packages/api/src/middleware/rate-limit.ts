@@ -5,7 +5,8 @@
  * self-hosted, so we don't need a distributed store. The limiter is
  * keyed by client IP; behind the bundled nginx the `X-Forwarded-For`
  * header is the real source, so we read it first and fall back to
- * `c.req.header("x-real-ip")` / the remote address.
+ * `c.req.header("x-real-ip")` / the literal string "unknown" (we do
+ * not read the raw socket address, which is the proxy in our deploy).
  *
  * Defaults: 100 req/min per IP. Configurable via
  * `RATE_LIMIT_PER_MINUTE` env var. The /health/* and /metrics paths

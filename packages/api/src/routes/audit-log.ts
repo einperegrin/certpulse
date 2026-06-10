@@ -6,22 +6,18 @@
  * `offset`. The same auth middleware that guards /api/* applies here,
  * so any caller is at least an api-token holder; v0.4 can layer an
  * admin-only role on top if a per-role ACL becomes a requirement.
+ *
+ * The DB is closed over from `createAuditLogRouter(db)` — the
+ * previous `app.use("*", c.set("db", db))` middleware (Copilot
+ * review: audit-log.ts:24) was dead code, since none of the handlers
+ * ever read it back. We removed it.
  */
 import { Hono } from "hono";
 import { type DB, getDb } from "../db/index.js";
 import { queryAudit, type AuditQuery } from "../services/audit.js";
 
-type Env = {
-  Variables: { db: DB };
-};
-
-export function createAuditLogRouter(db: DB = getDb()): Hono<Env> {
-  const app = new Hono<Env>();
-
-  app.use("*", async (c, next) => {
-    c.set("db", db);
-    await next();
-  });
+export function createAuditLogRouter(db: DB = getDb()): Hono {
+  const app = new Hono();
 
   app.get("/", (c) => {
     const q: AuditQuery = {};
