@@ -1,6 +1,38 @@
 import { sql } from "drizzle-orm";
 import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
 
+/**
+ * SQL injection audit (v0.3 / GHSA-gpj5-g38j-94v9).
+ *
+ * The high-severity advisory for `drizzle-orm <0.45.2` is about
+ * `sql.raw` and dynamic identifier interpolation. This codebase
+ * intentionally avoids both:
+ *
+ *  - `sql.raw(...)` is **not used anywhere**. We only use the tagged
+ *    template `sql\`...${colRef}...\`` form. Column references passed
+ *    through `${...}` are escaped by drizzle (they are not inlined
+ *    as raw identifiers).
+ *  - Identifiers (table / column names) are always referenced via
+ *    the typed `drizzle-orm/sqlite-core` builders (`sqliteTable`,
+ *    `text("col_name")`, `integer("col_name")`, `from(domains)`,
+ *    `eq(domains.id, x)`, `desc(checks.checkedAt)`), never via
+ *    string concatenation.
+ *  - The only string-into-SQL entry points are:
+ *      (a) column defaults using `sql\`(datetime('now'))\`` — a
+ *          fixed literal, no interpolation.
+ *      (b) the dashboard's `leftJoin` on the latest check, where
+ *          the right-hand side is `sql\`(SELECT id FROM checks
+ *          WHERE domain_id = domains.id ORDER BY checked_at DESC
+ *          LIMIT 1)\`` — a fixed literal subquery, no
+ *          interpolation.
+ *      (c) `VACUUM` in `jobs/retention.ts` — a fixed literal, no
+ *          interpolation.
+ *
+ * No user input is ever interpolated into SQL. The audit fix in
+ * v0.3 is therefore "no code change required; documented above",
+ * consistent with the task brief.
+ */
+
 export const domains = sqliteTable("domains", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   hostname: text("hostname").notNull().unique(),
@@ -102,3 +134,30 @@ export const schedulerState = sqliteTable("scheduler_state", {
 
 export type SchedulerState = typeof schedulerState.$inferSelect;
 export type NewSchedulerState = typeof schedulerState.$inferInsert;
+
+/**
+ * Audit log (v0.3). One row per state-changing action (domain /
+ * channel / token CRUD, auth attempts). See `services/audit.ts` for
+ * the writer / reader API.
+ */
+export const auditLog = sqliteTable("audit_log", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  timestamp: text("timestamp").default(sql`(datetime('now'))`).notNull(),
+  // "user" | "api_token" | "system"
+  actorType: text("actor_type").notNull(),
+  // Token label, remote IP, or "scheduler"/"migration" for system actors.
+  actorId: text("actor_id"),
+  // Dotted action name: "domain.create", "auth.login.failure", etc.
+  action: text("action").notNull(),
+  // "domain" | "channel" | "token" | "auth"
+  resourceType: text("resource_type").notNull(),
+  // Hostname, channel id, token id, etc. — string form, since the
+  // resource may be identified by something other than an int.
+  resourceId: text("resource_id"),
+  // JSON-encoded. Captures (before, after) for updates, reason for
+  // deletes, or a free-form payload for login attempts.
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown> | null>(),
+});
+
+export type AuditLog = typeof auditLog.$inferSelect;
+export type NewAuditLog = typeof auditLog.$inferInsert;
