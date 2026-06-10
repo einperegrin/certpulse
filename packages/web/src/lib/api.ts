@@ -130,4 +130,34 @@ export const api = {
       alertEmailTo: string | null;
     }>("/api/config"),
   health: () => request<{ ok: boolean; ts: string }>("/health"),
+  listAuditLog: (params?: {
+    actorType?: "user" | "api_token" | "system";
+    action?: string;
+    resourceType?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const q = new URLSearchParams();
+    if (params?.actorType) q.set("actor_type", params.actorType);
+    if (params?.action) q.set("action", params.action);
+    if (params?.resourceType) q.set("resource_type", params.resourceType);
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return request<{
+      rows: Array<{
+        id: number;
+        timestamp: string;
+        actorType: string;
+        actorId: string | null;
+        action: string;
+        resourceType: string;
+        resourceId: string | null;
+        metadata: Record<string, unknown> | null;
+      }>;
+      total: number;
+      limit: number;
+      offset: number;
+    }>(`/api/audit-log${qs ? `?${qs}` : ""}`);
+  },
 };
