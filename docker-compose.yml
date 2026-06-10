@@ -24,11 +24,19 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
-    # Drop all Linux capabilities, then add only what node needs (none
-    # for a normal HTTP server). no-new-privileges prevents setuid
-    # binaries from escalating.
+    # Drop all Linux capabilities, then add only what the entrypoint
+    # needs to (1) repair /app/data ownership on volumes inherited from
+    # older images and (2) drop to UID 10001 before exec-ing node.
+    # CHOWN powers the chown, SETUID + SETGID power the setresuid/setresgid
+    # that setpriv performs. no-new-privileges:true means those caps
+    # cannot be inherited by any child process — they are a one-shot
+    # tool used by PID 1 only.
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     security_opt:
       - no-new-privileges:true
     healthcheck:

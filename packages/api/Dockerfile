@@ -42,23 +42,36 @@ RUN groupadd --system --gid 10001 certpulse \
 # uses a single npm workspace, no per-package lockfile). The runtime install
 # uses the api workspace's package.json so the right tree is loaded, and the
 # root lockfile makes the install reproducible.
-# Permissions: code is world-readable, migrations belong to the runtime
-# user (the migration runner opens them after the UID drop).
+# Permissions: code is world-readable, migrations belong to root (the
+# entrypoint chowns /app/data on every start anyway).
 COPY --from=build --chown=root:root      /app/packages/api/dist                ./dist
 COPY --from=build --chown=root:root      /app/packages/api/package.json        ./packages/api/package.json
+COPY --from=build --chown=root:root      /app/packages/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=build --chown=root:root      /app/package.json                     ./package.json
 COPY --from=build --chown=root:root      /app/package-lock.json                ./package-lock.json
 COPY --from=build --chown=certpulse:certpulse /app/packages/api/src/db/migrations   ./dist/db/migrations
-RUN cd /app/packages/api && npm ci --omit=dev --no-audit --no-fund \
+
+RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
+    && cd /app/packages/api && npm ci --omit=dev --no-audit --no-fund \
     && chown -R root:root /app/node_modules \
-    && chmod -R a+rX /app/dist /app/packages /app/package.json /app/package-lock.json \
+    && chmod -R a+rX /app/dist /app/packages /app/package.json /app/package-lock.json /app/node_modules \
     && npm cache clean --force
 
 # /app/data is the only writable path (mounted as a volume in compose).
-RUN mkdir -p /app/data && chown -R certpulse:certpulse /app/data
+# The entrypoint chowns it to UID 10001 on every start so volumes
+# inherited from older images (or bind-mounted host directories) end up
+# writable by the api process. We do not chown here because the volume
+# is empty at build time and chown is a no-op on an empty directory.
+RUN mkdir -p /app/data
 
-USER certpulse
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=5 \
   CMD wget -q -O- http://localhost:3000/health >/dev/null 2>&1 || exit 1
-CMD ["node", "dist/index.js"]
+
+# Entrypoint runs as root (it needs root to chown /app/data) and then
+# drops to UID 10001 via setpriv. The compose file grants the
+# capabilities required for that dance: CHOWN for the repair, plus
+# SETUID and SETGID so setpriv can switch to the unprivileged user.
+# no-new-privileges is still on, so those caps cannot be inherited by
+# any child process — they are a one-shot tool used by PID 1.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
