@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { type DB, getDb } from "../db/index.js";
 import { alertChannels, domains } from "../db/schema.js";
 import { validateWebhookUrl } from "../services/url-guard.js";
+import { recordAudit } from "../services/audit.js";
 
 const channelNameSchema = z.enum(["email", "webhook", "telegram", "slack", "ntfy"]);
 
@@ -186,6 +187,18 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
         .where(eq(alertChannels.id, existing.id))
         .returning()
         .all()[0];
+      recordAudit(db, {
+        actorType: "api_token",
+        actorId: null,
+        action: "channel.update",
+        resourceType: "channel",
+        resourceId: String(existing.id),
+        metadata: {
+          domainId,
+          channel: parsed.data.channel,
+          enabled: parsed.data.enabled,
+        },
+      });
       return c.json({ channel: rowToJson(updated) });
     }
 
@@ -202,6 +215,18 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
       updatedAt: now,
     } as typeof alertChannels.$inferInsert;
     const inserted = db.insert(alertChannels).values(values).returning().all()[0];
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: null,
+      action: "channel.create",
+      resourceType: "channel",
+      resourceId: String(inserted.id),
+      metadata: {
+        domainId,
+        channel: parsed.data.channel,
+        enabled: parsed.data.enabled,
+      },
+    });
     return c.json({ channel: rowToJson(inserted) }, 201);
   });
 
@@ -256,6 +281,18 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
       .returning()
       .all()[0];
     if (!result) return c.json({ error: "Not found" }, 404);
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: null,
+      action: "channel.update",
+      resourceType: "channel",
+      resourceId: String(id),
+      metadata: {
+        domainId,
+        enabled: parsed.data.enabled,
+        configChanged: parsed.data.config !== undefined,
+      },
+    });
     return c.json({ channel: rowToJson(result) });
   });
 
@@ -271,6 +308,14 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
       .where(and(eq(alertChannels.id, id), eq(alertChannels.domainId, domainId)))
       .run();
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: null,
+      action: "channel.delete",
+      resourceType: "channel",
+      resourceId: String(id),
+      metadata: { domainId },
+    });
     return c.json({ ok: true });
   });
 
