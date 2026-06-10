@@ -6,18 +6,37 @@
  * only. The escape hatch is documented; production deployments must NOT
  * set it.
  *
- * On a valid token, `last_used_at` is updated best-effort so operators can
- * audit stale credentials. A failure to update never blocks the request —
- * auditability is nice-to-have, the user request is the primary job.
+ * On a valid token, the caller's token row is exposed to downstream
+ * handlers via `c.get('actor') = { id, label }` so audit writes can
+ * attribute CRUD operations to the right token. `last_used_at` is
+ * updated best-effort so operators can audit stale credentials. A
+ * failure to update never blocks the request — auditability is
+ * nice-to-have, the user request is the primary job.
  */
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { eq } from "drizzle-orm";
 import type { DB } from "../db/index.js";
 import { apiTokens } from "../db/schema.js";
 import { hashToken } from "../services/auth.js";
 
-export function createAuthMiddleware(db: DB): MiddlewareHandler {
-  return async (c, next) => {
+/**
+ * Shape of the actor record stashed on the request by the auth
+ * middleware. Handlers read it back via `c.get('actor')` and pass
+ * the label into `recordAudit(..., { actorId: actor.label })`.
+ */
+export interface RequestActor {
+  id: number;
+  label: string;
+}
+
+export type AuthEnv = {
+  Variables: {
+    actor?: RequestActor;
+  };
+};
+
+export function createAuthMiddleware(db: DB): MiddlewareHandler<AuthEnv> {
+  return async (c: Context<AuthEnv>, next) => {
     // Dev escape hatch — NEVER set in production.
     if (process.env.AUTH_DISABLED) {
       return next();
@@ -50,6 +69,12 @@ export function createAuthMiddleware(db: DB): MiddlewareHandler {
     if (found.expiresAt && new Date(found.expiresAt) < new Date()) {
       return c.json({ error: "Token expired" }, 401);
     }
+
+    // Expose the actor to downstream handlers so audit writes can
+    // attribute the action. (Copilot review: domains.ts:106 / 189,
+    // channels.ts:193 / 221 / 288 / 314 — audit rows were written
+    // with actorId: null instead of the caller's token label.)
+    c.set("actor", { id: found.id, label: found.label });
 
     // Update last_used_at (best-effort, don't fail the request)
     try {

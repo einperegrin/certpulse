@@ -22,7 +22,7 @@ const addDomainSchema = z.object({
 });
 
 type Env = {
-  Variables: { db: DB };
+  Variables: { db: DB; actor?: { id: number; label: string } };
 };
 
 export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
@@ -99,10 +99,13 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
     if (!domain) {
       return c.json({ error: "Failed to create domain" }, 500);
     }
-    // v0.3 audit log: who created this domain.
+    // v0.3 audit log: who created this domain. actorId is the caller's
+    // token label, populated by the auth middleware via c.get('actor').
+    // Falls back to "unknown" if for some reason the actor is missing
+    // (e.g. AUTH_DISABLED=1 in dev). (Copilot review: domains.ts:106.)
     recordAudit(db, {
       actorType: "api_token",
-      actorId: null, // populated by the auth middleware in v0.4
+      actorId: c.get("actor")?.label ?? "unknown",
       action: "domain.create",
       resourceType: "domain",
       resourceId: String(domain.id),
@@ -185,7 +188,7 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
     recordAudit(db, {
       actorType: "api_token",
-      actorId: null,
+      actorId: c.get("actor")?.label ?? "unknown",
       action: "domain.delete",
       resourceType: "domain",
       resourceId: String(id),
