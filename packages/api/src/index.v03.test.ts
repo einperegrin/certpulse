@@ -52,8 +52,11 @@ describe("v0.3 health endpoints", () => {
     const { app } = makeApp();
     const res = await app.request("/health");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean };
-    expect(body.ok).toBe(true);
+    // /health is an alias for /health/live and returns the same shape:
+    // { status: "ok", ts: <ISO string> }.
+    const body = (await res.json()) as { status: string; ts: string };
+    expect(body.status).toBe("ok");
+    expect(typeof body.ts).toBe("string");
   });
 
   it("/health/ready reports ok + db=ok with checks breakdown", async () => {
