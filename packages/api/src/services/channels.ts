@@ -52,11 +52,13 @@ class ResendEmailSender implements AlertChannelSender {
     const from = typeof config.from === "string" ? config.from : (process.env.ALERT_EMAIL_FROM ?? "certpulse@localhost");
     if (!to) return { error: "No destination email configured" };
     if (!this.apiKey) {
-      // Log to stdout — keeps the old fallback behaviour. Pino's
-      // redaction list scrubs `to`/`from` so we don't accidentally
-      // capture the recipient's email in a structured log.
+      // Log to stdout via pino — keeps the old fallback behaviour.
+      // Pino's redaction list scrubs `to`/`from` so we don't
+      // accidentally capture the recipient's email in a structured
+      // log. We also dump the body text on its own line so anything
+      // tailing the container gets the alert content (v0.2 behaviour).
       logger.info({ to, from, subject: content.subject }, "alert:email:log");
-      console.log(content.text);
+      logger.info(content.text);
       return { id: `log-${Date.now()}` };
     }
     try {
