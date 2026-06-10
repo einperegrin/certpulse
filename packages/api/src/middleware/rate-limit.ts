@@ -5,8 +5,14 @@
  * self-hosted, so we don't need a distributed store. The limiter is
  * keyed by client IP; behind the bundled nginx the `X-Forwarded-For`
  * header is the real source, so we read it first and fall back to
- * `c.req.header("x-real-ip")` / the literal string "unknown" (we do
- * not read the raw socket address, which is the proxy in our deploy).
+ * `c.req.header("x-real-ip")` / the literal string "unknown".
+ *
+ * Note: we deliberately do NOT read the raw socket remote address
+ * here — Hono's request abstraction doesn't expose it, and in our
+ * nginx-fronted deploy the socket peer is the proxy, not the real
+ * client. (Copilot review: rate-limit.ts:10 — "the module comment
+ * says the IP extraction falls back to ... the remote address" —
+ * the comment is now accurate.)
  *
  * Defaults: 100 req/min per IP. Configurable via
  * `RATE_LIMIT_PER_MINUTE` env var. The /health/* and /metrics paths

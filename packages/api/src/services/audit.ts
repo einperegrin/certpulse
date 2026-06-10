@@ -148,7 +148,17 @@ export function pruneAuditLog(db: DB, retentionDays: number): number {
   // The schema stores `timestamp` as `datetime('now')` text. The
   // cutoff below is computed in the same format so the comparison
   // stays a plain lexicographic string compare inside SQLite.
-  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
+  //
+  // Sanitize retentionDays: clamp to a sane positive integer so a
+  // 0 / negative / NaN / float call site can't compute a future
+  // cutoff and silently wipe the whole audit history. (Copilot
+  // review: audit.ts:154 — "retentionDays <= 0 will compute a
+  // cutoff in the future and delete all audit rows".)
+  const safeDays = Math.max(
+    1,
+    Math.floor(Number.isFinite(retentionDays) ? retentionDays : 1)
+  );
+  const cutoff = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000)
     .toISOString()
     .replace("T", " ")
     .replace(/\.\d{3}Z$/, "");
