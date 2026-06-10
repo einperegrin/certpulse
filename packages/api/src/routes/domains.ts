@@ -5,6 +5,7 @@ import { type DB, getDb } from "../db/index.js";
 import { domains, checks } from "../db/schema.js";
 import { runCheckForDomainById } from "../services/checker-runner.js";
 import { isPrivateAddress } from "../services/ssrf-guard.js";
+import { recordAudit } from "../services/audit.js";
 
 const hostnameSchema = z
   .string()
@@ -98,6 +99,15 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
     if (!domain) {
       return c.json({ error: "Failed to create domain" }, 500);
     }
+    // v0.3 audit log: who created this domain.
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: null, // populated by the auth middleware in v0.4
+      action: "domain.create",
+      resourceType: "domain",
+      resourceId: String(domain.id),
+      metadata: { hostname: domain.hostname, port: domain.port },
+    });
     let firstCheck = null;
     try {
       firstCheck = await runCheckForDomainById(domain.id, db);
@@ -165,8 +175,22 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
   app.delete("/:id", (c) => {
     const id = parseInt(c.req.param("id"), 10);
     if (Number.isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const existing = db
+      .select({ hostname: domains.hostname })
+      .from(domains)
+      .where(eq(domains.id, id))
+      .limit(1)
+      .all()[0];
     const result = db.delete(domains).where(eq(domains.id, id)).run();
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: null,
+      action: "domain.delete",
+      resourceType: "domain",
+      resourceId: String(id),
+      metadata: { hostname: existing?.hostname },
+    });
     return c.json({ ok: true });
   });
 

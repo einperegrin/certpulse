@@ -14,6 +14,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/index.js";
 import { apiTokens } from "../db/schema.js";
 import { generateToken, hashToken } from "../services/auth.js";
+import { recordAudit } from "../services/audit.js";
 
 function getArg(name: string, required: boolean): string | null {
   const i = process.argv.indexOf(`--${name}`);
@@ -34,9 +35,19 @@ async function main() {
     const expires = getArg("expires", false);
     const token = generateToken();
     const hash = hashToken(token);
-    db.insert(apiTokens)
+    const inserted = db
+      .insert(apiTokens)
       .values({ tokenHash: hash, label, expiresAt: expires ?? null })
-      .run();
+      .returning({ id: apiTokens.id })
+      .all()[0];
+    recordAudit(db, {
+      actorType: "system",
+      actorId: "cli",
+      action: "token.create",
+      resourceType: "token",
+      resourceId: String(inserted?.id ?? ""),
+      metadata: { label, expiresAt: expires ?? null },
+    });
     console.log(`Token created. SAVE THIS — it will not be shown again:\n  ${token}`);
     return;
   }
@@ -67,7 +78,21 @@ async function main() {
       console.error("--id must be an integer");
       process.exit(1);
     }
+    const existing = db
+      .select({ id: apiTokens.id, label: apiTokens.label })
+      .from(apiTokens)
+      .where(eq(apiTokens.id, id))
+      .limit(1)
+      .all()[0];
     db.delete(apiTokens).where(eq(apiTokens.id, id)).run();
+    recordAudit(db, {
+      actorType: "system",
+      actorId: "cli",
+      action: "token.revoke",
+      resourceType: "token",
+      resourceId: String(id),
+      metadata: { label: existing?.label },
+    });
     console.log(`Token ${id} revoked.`);
     return;
   }
