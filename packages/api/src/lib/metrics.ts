@@ -92,6 +92,20 @@ export const dbQueryDurationSeconds = new Histogram({
 });
 
 /**
+ * `certpulse_http_request_duration_seconds{result, method}` — wall time
+ * per HTTP /api/* request. Distinct from `certpulse_check_duration_seconds`,
+ * which measures the SSL/TLS check itself. v0.3 keeps `method` and `result`
+ * as the only labels to bound cardinality; per-route labels are a v0.4 task.
+ */
+export const httpRequestDurationSeconds = new Histogram({
+  name: "certpulse_http_request_duration_seconds",
+  help: "Duration of an HTTP /api/* request",
+  labelNames: ["result", "method"] as const,
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [registry],
+});
+
+/**
  * Typed helper for the alerter — narrows the labels to known channel
  * and source names so a typo at the call site fails the type checker
  * instead of polluting the metric.

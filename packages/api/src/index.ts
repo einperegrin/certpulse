@@ -14,15 +14,15 @@ import { startScheduler, stopScheduler, getCheckIntervalMinutes } from "./servic
 import { recentAlerts } from "./services/alerter.js";
 import { logger } from "./services/logger.js";
 import {
-  checkDurationSeconds,
   checksTotal,
   dbQueryDurationSeconds,
   domainsTotal,
+  httpRequestDurationSeconds,
   registry,
   tokensTotal,
 } from "./lib/metrics.js";
-import { sql, eq } from "drizzle-orm";
-import { apiTokens, domains, schedulerState } from "./db/schema.js";
+import { sql, eq, desc } from "drizzle-orm";
+import { alerts, apiTokens, domains, schedulerState } from "./db/schema.js";
 
 /**
  * Tiny DB-ping helper used by /health/ready. The simplest possible
@@ -64,9 +64,11 @@ function refreshGauges(db: DB): void {
 }
 
 /**
- * Read the `last_tick` and `last_alert` (we use the most recent
- * alerts.createdAt as a proxy) timestamps so /health/ready can
- * report staleness.
+ * Read the `last_tick` and `last_alert` timestamps so /health/ready
+ * can report staleness. `last_tick` is the last time the scheduler
+ * claim was updated (a successful tick). `last_alert` is the most
+ * recent row in `alerts` — a proxy for "did the alerter actually
+ * dispatch something recently".
  */
 function lastTickAgeSeconds(db: DB): number | null {
   try {
@@ -77,6 +79,30 @@ function lastTickAgeSeconds(db: DB): number | null {
       .all()[0];
     if (!row?.value) return null;
     const ts = Date.parse(row.value);
+    if (Number.isNaN(ts)) return null;
+    return Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  } catch {
+    return null;
+  }
+}
+
+function lastAlertAgeSeconds(db: DB): number | null {
+  try {
+    const row = db
+      .select({ createdAt: alerts.createdAt })
+      .from(alerts)
+      .orderBy(desc(alerts.createdAt))
+      .limit(1)
+      .all()[0];
+    if (!row?.createdAt) return null;
+    // `alerts.createdAt` is stored via `datetime('now')` text in the
+    // schema — try parsing as ISO first, fall back to replacing the
+    // SQLite-formatted space separator. Either way, return null on
+    // NaN so /health/ready reports "never alerted" rather than 0.
+    let ts = Date.parse(row.createdAt);
+    if (Number.isNaN(ts)) {
+      ts = Date.parse(row.createdAt.replace(" ", "T") + "Z");
+    }
     if (Number.isNaN(ts)) return null;
     return Math.max(0, Math.floor((Date.now() - ts) / 1000));
   } catch {
@@ -106,20 +132,24 @@ export function createApp(options?: { db?: DB }) {
   // credentials.
   //
   // /health is kept as a backward-compat alias for /health/live so
-  // existing compose files don't break.
-  app.get("/health", (c) => c.json({ ok: true, ts: new Date().toISOString() }));
+  // existing compose files don't break. Both endpoints return the
+  // SAME shape (`{status, ts}`) so monitoring tooling that switches
+  // from one to the other is not surprised.
+  app.get("/health", (c) => c.json({ status: "ok", ts: new Date().toISOString() }));
   app.get("/health/live", (c) => c.json({ status: "ok", ts: new Date().toISOString() }));
 
   app.get("/health/ready", (c) => {
     const dbOk = dbPing(db);
     refreshGauges(db);
     const lastTick = lastTickAgeSeconds(db);
+    const lastAlert = lastAlertAgeSeconds(db);
     const body = {
       status: dbOk ? "ok" : "degraded",
       timestamp: new Date().toISOString(),
       checks: {
         db: dbOk ? "ok" : "fail",
         last_check_age_seconds: lastTick,
+        last_alert_age_seconds: lastAlert,
       },
     };
     return c.json(body, dbOk ? 200 : 503);
@@ -140,11 +170,14 @@ export function createApp(options?: { db?: DB }) {
   // Bearer-token auth on every /api/* route. Skips /health and
   // /metrics (registered above before this middleware) and is bypassed
   // only when AUTH_DISABLED is set (dev mode — see auth.ts).
-  app.use("/api/*", createAuthMiddleware(db));
-
-  // Per-IP rate limit on /api/*. Defaults to 100 req/min (configurable
-  // via RATE_LIMIT_PER_MINUTE). Health and metrics are unaffected.
+  //
+  // Mounted AFTER rate-limit so that a flood of unauthenticated
+  // requests can't burn DB CPU on `api_tokens` lookups. (Copilot
+  // review: index.ts:147 — "rate-limit mounted after auth" — same
+  // security boundary, just reversed so unauthed bursts can't
+  // saturate the auth path before being throttled.)
   app.use("/api/*", createRateLimitMiddleware());
+  app.use("/api/*", createAuthMiddleware(db));
 
   app.route("/api/domains", createDomainsRouter(db));
   app.route("/api/checks", createChecksRouter(db));
@@ -182,17 +215,23 @@ export function createApp(options?: { db?: DB }) {
     );
   });
 
-  // Track the duration of every /api/* request as a histogram label
-  // per-operation. This is a coarse metric — better than nothing for
-  // a self-hosted v0.3.0 — and the place to extend in v0.4 with
-  // per-route labels.
+  // Track the duration of every /api/* request. v0.3 records a single
+  // histogram with `result` and `method` labels — the previous code
+  // accidentally reused `checkDurationSeconds` (which is for SSL/TLS
+  // check timing) and only labelled it by `result`, polluting the
+  // cert-check metric with HTTP request latencies. (Copilot review:
+  // index.ts:192, index.ts:195.)
   app.use("/api/*", async (c, next) => {
-    const end = checkDurationSeconds.startTimer();
+    const end = httpRequestDurationSeconds.startTimer();
     const dbEnd = dbQueryDurationSeconds.startTimer();
     try {
       await next();
     } finally {
-      end({ result: c.res?.status && c.res.status < 400 ? "success" : "failure" });
+      const status = c.res?.status ?? 0;
+      end({
+        result: status && status < 400 ? "success" : "failure",
+        method: c.req.method,
+      });
       dbEnd({ operation: "request" });
     }
   });

@@ -132,8 +132,14 @@ export function queryAudit(db: DB, q: AuditQuery = {}): { rows: AuditRow[]; tota
 
 /**
  * Retention prune: delete rows older than `retentionDays` days.
- * Called by the existing daily retention tick — exposed here so a
- * CLI can also call it.
+ *
+ * ⚠️ This is the RETENTION helper — only the daily retention tick
+ * should call it. It is exported (not internal) so a future
+ * `certpulse audit prune --days N` CLI can wire to it, but no
+ * request-time code path should ever invoke it. Doing so would
+ * silently delete audit history. (Copilot review: audit.ts:148 —
+ * "pruneAuditLog is exported and can be called by non-retention
+ * paths".)
  *
  * Returns the number of rows removed. SQLite is serialised so the
  * count is accurate.
