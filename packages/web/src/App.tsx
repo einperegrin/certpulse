@@ -5,6 +5,7 @@ import { Button } from "./components/ui/button";
 import { AddDomainDialog } from "./components/AddDomainDialog";
 import { Dashboard } from "./pages/Dashboard";
 import { DomainDetail } from "./pages/DomainDetail";
+import { AuditLog } from "./pages/AuditLog";
 
 export default function App() {
   const [addOpen, setAddOpen] = React.useState(false);
@@ -26,6 +27,14 @@ export default function App() {
                 Dashboard
               </Button>
             </Link>
+            <Link to="/audit">
+              <Button
+                variant={location.pathname === "/audit" ? "secondary" : "ghost"}
+                size="sm"
+              >
+                Audit
+              </Button>
+            </Link>
             <Button size="sm" onClick={() => setAddOpen(true)}>
               + Add
             </Button>
@@ -36,6 +45,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/domains/:id" element={<DomainDetail />} />
+          <Route path="/audit" element={<AuditLog />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
