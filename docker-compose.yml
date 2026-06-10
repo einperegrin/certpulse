@@ -56,9 +56,18 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    # Same hardening for nginx: read-only root, no new privileges, no
-    # extra capabilities. Nginx needs /var/cache/nginx and /var/run for
-    # pid/socket; we provide them via tmpfs.
+    # Same hardening for nginx: read-only root, no new privileges. Nginx
+    # needs /var/cache/nginx and /var/run for pid/socket and the 5 temp
+    # paths (client/proxy/fastcgi/uwsgi/scgi) — we provide them via
+    # tmpfs. The master process must (a) chown these to UID 101 ("nginx")
+    # before forking workers, and (b) setuid/setgid to UID 101 once it
+    # is done binding :80. We therefore add back CAP_CHOWN, CAP_SETUID,
+    # and CAP_SETGID — the same one-shot pattern used by the api. With
+    # no-new-privileges, those capabilities cannot be inherited by any
+    # child of the nginx master; the worker processes have no caps left.
+    # We do NOT grant NET_BIND_SERVICE: the master runs as root long
+    # enough to bind :80 and fork workers, then setuid(101) drops
+    # privileges, so binding :80 happens before any capability drop.
     read_only: true
     tmpfs:
       - /var/cache/nginx:size=16m
@@ -66,10 +75,16 @@ services:
       - /tmp:size=8m
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost/health"]
+      # Use 127.0.0.1 explicitly: Alpine's `localhost` resolves to ::1 first
+      # and nginx is configured to listen on IPv4 only.
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 5
