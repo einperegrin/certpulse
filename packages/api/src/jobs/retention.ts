@@ -13,12 +13,15 @@ import { lt, sql } from "drizzle-orm";
 import { type DB } from "../db/index.js";
 import { checks, alerts } from "../db/schema.js";
 import { logger } from "../services/logger.js";
+import { pruneAuditLog } from "../services/audit.js";
 
 export const CHECK_RETENTION_DAYS = 90;
 export const ALERT_RETENTION_DAYS = 365;
+export const AUDIT_RETENTION_DAYS = 90;
 
 const RETENTION_DAYS_ENV = "RETENTION_DAYS";
 const ALERT_RETENTION_DAYS_ENV = "ALERT_RETENTION_DAYS";
+const AUDIT_RETENTION_DAYS_ENV = "AUDIT_LOG_RETENTION_DAYS";
 
 /**
  * Read a retention window from the environment, with a module-level
@@ -54,11 +57,12 @@ function sqliteNowOffset(offsetMs: number): string {
 export interface RetentionResult {
   deletedChecks: number;
   deletedAlerts: number;
+  deletedAudit: number;
 }
 
 export function runRetention(
   db: DB,
-  options: { checkDays?: number; alertDays?: number } = {}
+  options: { checkDays?: number; alertDays?: number; auditDays?: number } = {}
 ): RetentionResult {
   // Explicit argument > env var > module default. The env-var path is
   // what the PR body advertises ("RETENTION_DAYS / ALERT_RETENTION_DAYS
@@ -68,6 +72,8 @@ export function runRetention(
     ?? readRetentionEnv(RETENTION_DAYS_ENV, CHECK_RETENTION_DAYS);
   const alertDays = options.alertDays
     ?? readRetentionEnv(ALERT_RETENTION_DAYS_ENV, ALERT_RETENTION_DAYS);
+  const auditDays = options.auditDays
+    ?? readRetentionEnv(AUDIT_RETENTION_DAYS_ENV, AUDIT_RETENTION_DAYS);
 
   const checkCutoff = sqliteNowOffset(-checkDays * 86_400_000);
   const alertCutoff = sqliteNowOffset(-alertDays * 86_400_000);
@@ -81,6 +87,11 @@ export function runRetention(
     .where(lt(alerts.createdAt, alertCutoff))
     .run().changes;
 
+  // Audit log retention (v0.3). Default 90 days, configurable via
+  // AUDIT_LOG_RETENTION_DAYS. Kept as a separate prune call so the
+  // CLI (`certpulse audit prune --days N`) can also drive it.
+  const deletedAudit = pruneAuditLog(db, auditDays);
+
   // VACUUM to reclaim space. Has to run outside a transaction.
   try {
     db.run(sql`VACUUM`);
@@ -89,5 +100,5 @@ export function runRetention(
     logger.error({ err }, "VACUUM failed");
   }
 
-  return { deletedChecks, deletedAlerts };
+  return { deletedChecks, deletedAlerts, deletedAudit };
 }

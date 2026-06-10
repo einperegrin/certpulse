@@ -5,6 +5,7 @@ import { type DB, getDb } from "../db/index.js";
 import { domains, checks } from "../db/schema.js";
 import { runCheckForDomainById } from "../services/checker-runner.js";
 import { isPrivateAddress } from "../services/ssrf-guard.js";
+import { recordAudit } from "../services/audit.js";
 
 const hostnameSchema = z
   .string()
@@ -21,7 +22,7 @@ const addDomainSchema = z.object({
 });
 
 type Env = {
-  Variables: { db: DB };
+  Variables: { db: DB; actor?: { id: number; label: string } };
 };
 
 export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
@@ -98,6 +99,18 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
     if (!domain) {
       return c.json({ error: "Failed to create domain" }, 500);
     }
+    // v0.3 audit log: who created this domain. actorId is the caller's
+    // token label, populated by the auth middleware via c.get('actor').
+    // Falls back to "unknown" if for some reason the actor is missing
+    // (e.g. AUTH_DISABLED=1 in dev). (Copilot review: domains.ts:106.)
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: c.get("actor")?.label ?? "unknown",
+      action: "domain.create",
+      resourceType: "domain",
+      resourceId: String(domain.id),
+      metadata: { hostname: domain.hostname, port: domain.port },
+    });
     let firstCheck = null;
     try {
       firstCheck = await runCheckForDomainById(domain.id, db);
@@ -165,8 +178,22 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
   app.delete("/:id", (c) => {
     const id = parseInt(c.req.param("id"), 10);
     if (Number.isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+    const existing = db
+      .select({ hostname: domains.hostname })
+      .from(domains)
+      .where(eq(domains.id, id))
+      .limit(1)
+      .all()[0];
     const result = db.delete(domains).where(eq(domains.id, id)).run();
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
+    recordAudit(db, {
+      actorType: "api_token",
+      actorId: c.get("actor")?.label ?? "unknown",
+      action: "domain.delete",
+      resourceType: "domain",
+      resourceId: String(id),
+      metadata: { hostname: existing?.hostname },
+    });
     return c.json({ ok: true });
   });
 
