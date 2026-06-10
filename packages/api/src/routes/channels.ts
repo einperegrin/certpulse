@@ -73,7 +73,7 @@ async function validateChannelConfig(
 }
 
 type Env = {
-  Variables: { db: DB };
+  Variables: { db: DB; actor?: { id: number; label: string } };
 };
 
 function ensureDomainExists(db: DB, domainId: number): boolean {
@@ -189,7 +189,7 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
         .all()[0];
       recordAudit(db, {
         actorType: "api_token",
-        actorId: null,
+        actorId: c.get("actor")?.label ?? "unknown",
         action: "channel.update",
         resourceType: "channel",
         resourceId: String(existing.id),
@@ -217,7 +217,7 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
     const inserted = db.insert(alertChannels).values(values).returning().all()[0];
     recordAudit(db, {
       actorType: "api_token",
-      actorId: null,
+      actorId: c.get("actor")?.label ?? "unknown",
       action: "channel.create",
       resourceType: "channel",
       resourceId: String(inserted.id),
@@ -283,7 +283,7 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
     if (!result) return c.json({ error: "Not found" }, 404);
     recordAudit(db, {
       actorType: "api_token",
-      actorId: null,
+      actorId: c.get("actor")?.label ?? "unknown",
       action: "channel.update",
       resourceType: "channel",
       resourceId: String(id),
@@ -310,7 +310,7 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
     if (result.changes === 0) return c.json({ error: "Not found" }, 404);
     recordAudit(db, {
       actorType: "api_token",
-      actorId: null,
+      actorId: c.get("actor")?.label ?? "unknown",
       action: "channel.delete",
       resourceType: "channel",
       resourceId: String(id),

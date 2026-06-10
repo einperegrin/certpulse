@@ -134,6 +134,8 @@ export const api = {
     actorType?: "user" | "api_token" | "system";
     action?: string;
     resourceType?: string;
+    since?: string;
+    until?: string;
     limit?: number;
     offset?: number;
   }) => {
@@ -141,6 +143,8 @@ export const api = {
     if (params?.actorType) q.set("actor_type", params.actorType);
     if (params?.action) q.set("action", params.action);
     if (params?.resourceType) q.set("resource_type", params.resourceType);
+    if (params?.since) q.set("since", params.since);
+    if (params?.until) q.set("until", params.until);
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.offset) q.set("offset", String(params.offset));
     const qs = q.toString();

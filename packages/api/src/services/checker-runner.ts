@@ -70,7 +70,7 @@ export async function runCheckForDomain(
   }
 
   const checkTimer = checkDurationSeconds.startTimer();
-  let result;
+  let result: Awaited<ReturnType<typeof checkSSL>>;
   try {
     result = await checkSSL(hostname, port, {
       rejectUnauthorized: options.rejectUnauthorized,

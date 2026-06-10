@@ -35,15 +35,17 @@ export function AuditLog() {
   const [action, setAction] = React.useState("");
   const [actorType, setActorType] = React.useState("");
   const [resourceType, setResourceType] = React.useState("");
+  const [since, setSince] = React.useState("");
+  const [until, setUntil] = React.useState("");
   const [offset, setOffset] = React.useState(0);
 
   // Reset pagination when filters change.
   React.useEffect(() => {
     setOffset(0);
-  }, [action, actorType, resourceType]);
+  }, [action, actorType, resourceType, since, until]);
 
   const query = useQuery({
-    queryKey: ["audit-log", action, actorType, resourceType, offset],
+    queryKey: ["audit-log", action, actorType, resourceType, since, until, offset],
     queryFn: () =>
       api.listAuditLog({
         action: action || undefined,
@@ -52,6 +54,13 @@ export function AuditLog() {
             ? undefined
             : (actorType as "user" | "api_token" | "system"),
         resourceType: resourceType || undefined,
+        // The backend accepts ISO-8601 datetimes for `since` / `until`.
+        // The HTML date input gives us a YYYY-MM-DD string, which is a
+        // valid ISO-8601 *date* (interpreted as UTC midnight by the
+        // server). That's good enough for a v0.3 filter UI; a
+        // date+time picker is a v0.4 enhancement.
+        since: since ? `${since}T00:00:00Z` : undefined,
+        until: until ? `${until}T23:59:59Z` : undefined,
         limit: PAGE_SIZE,
         offset,
       }),
@@ -90,22 +99,30 @@ export function AuditLog() {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-5">
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label
+                htmlFor="audit-filter-action"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500"
+              >
                 Action
               </label>
               <Input
+                id="audit-filter-action"
                 placeholder="domain.% or channel.create"
                 value={action}
                 onChange={(e) => setAction(e.target.value)}
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label
+                htmlFor="audit-filter-actor"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500"
+              >
                 Actor
               </label>
               <select
+                id="audit-filter-actor"
                 className="block w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-sm text-slate-900"
                 value={actorType}
                 onChange={(e) => setActorType(e.target.value)}
@@ -117,13 +134,45 @@ export function AuditLog() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+              <label
+                htmlFor="audit-filter-resource"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500"
+              >
                 Resource
               </label>
               <Input
+                id="audit-filter-resource"
                 placeholder="domain | channel | token"
                 value={resourceType}
                 onChange={(e) => setResourceType(e.target.value)}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="audit-filter-since"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500"
+              >
+                Since
+              </label>
+              <Input
+                id="audit-filter-since"
+                type="date"
+                value={since}
+                onChange={(e) => setSince(e.target.value)}
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="audit-filter-until"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500"
+              >
+                Until
+              </label>
+              <Input
+                id="audit-filter-until"
+                type="date"
+                value={until}
+                onChange={(e) => setUntil(e.target.value)}
               />
             </div>
           </div>
