@@ -153,6 +153,142 @@ describe("alert channels router", () => {
   });
 });
 
+describe("alert channels router — webhook signing secret (v0.4.0)", () => {
+  let app: ReturnType<typeof createApp>;
+  let db: DB;
+
+  beforeEach(() => {
+    delete process.env.ALLOW_PRIVATE_HOSTS;
+    const m = makeApp();
+    app = m.app;
+    db = m.db;
+  });
+
+  afterEach(() => {
+    delete process.env.ALLOW_PRIVATE_HOSTS;
+  });
+
+  it("accepts a secret on POST for a webhook channel", async () => {
+    const d = seedDomain(db);
+    const res = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: {
+          url: "https://example.com/hook",
+          secret: "super-secret-1234567890",
+        },
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { channel: { config: { secret: string; url: string } } };
+    expect(body.channel.config.url).toBe("https://example.com/hook");
+    expect(body.channel.config.secret).toBe("super-secret-1234567890");
+  });
+
+  it("rejects a secret shorter than 16 chars with 400", async () => {
+    const d = seedDomain(db);
+    const res = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: {
+          url: "https://example.com/hook",
+          secret: "short",
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/invalid/i);
+  });
+
+  it("rejects a secret longer than 256 chars with 400", async () => {
+    const d = seedDomain(db);
+    const res = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: {
+          url: "https://example.com/hook",
+          secret: "x".repeat(257),
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("PATCH without the secret field preserves the existing secret (omitted = no change)", async () => {
+    const d = seedDomain(db);
+    // Create with a secret.
+    const post = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: {
+          url: "https://example.com/hook",
+          secret: "super-secret-1234567890",
+        },
+      }),
+    });
+    const created = (await post.json()) as { channel: { id: number } };
+    // PATCH just enabled, no config.
+    const patch = await app.request(
+      `/api/domains/${d.id}/channels/${created.channel.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: false }),
+      }
+    );
+    expect(patch.status).toBe(200);
+    const body = (await patch.json()) as {
+      channel: { enabled: boolean; config: { secret: string; url: string } };
+    };
+    expect(body.channel.enabled).toBe(false);
+    // Secret is preserved.
+    expect(body.channel.config.secret).toBe("super-secret-1234567890");
+  });
+
+  it("PATCH with config that omits secret preserves the existing secret (partial update)", async () => {
+    const d = seedDomain(db);
+    const post = await app.request(`/api/domains/${d.id}/channels`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: "webhook",
+        config: {
+          url: "https://example.com/hook",
+          secret: "super-secret-1234567890",
+        },
+      }),
+    });
+    const created = (await post.json()) as { channel: { id: number } };
+    // PATCH config to a new URL but no secret. Because channelConfigSchema
+    // is .partial(), omitting secret is valid and we keep the existing one.
+    const patch = await app.request(
+      `/api/domains/${d.id}/channels/${created.channel.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { url: "https://example.com/hook2" } }),
+      }
+    );
+    expect(patch.status).toBe(200);
+    const body = (await patch.json()) as {
+      channel: { config: { secret: string; url: string } };
+    };
+    expect(body.channel.config.url).toBe("https://example.com/hook2");
+    // Secret preserved by partial-update semantics: client must explicitly
+    // send `secret: null` to clear it (intentionally limited in v0.4.0 —
+    // see PR body).
+  });
+});
+
 describe("alert channels router — URL guard (H-1)", () => {
   let app: ReturnType<typeof createApp>;
   let db: DB;

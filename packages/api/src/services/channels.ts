@@ -17,6 +17,7 @@
  */
 import { validateWebhookUrl } from "./url-guard.js";
 import { logger } from "./logger.js";
+import { createHmac } from "node:crypto";
 
 export type ChannelName = "email" | "webhook" | "telegram" | "slack" | "ntfy";
 
@@ -97,11 +98,26 @@ class WebhookSender implements AlertChannelSender {
       subject: content.subject,
       text: content.text,
     };
+    // Serialize ONCE so the body bytes the receiver gets are the same
+    // bytes we sign. The signing secret, if any, is a non-empty string
+    // (zod enforces 16-256 chars at write time; we re-check at send
+    // time so a corrupted/empty DB value never produces a signature).
+    const body = JSON.stringify(payload);
+    const secret = typeof config.secret === "string" && config.secret.length > 0
+      ? config.secret
+      : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (secret) {
+      const signature = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      headers["X-CertPulse-Signature"] = signature;
+      headers["X-CertPulse-Timestamp"] = timestamp;
+    }
     try {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers,
+        body,
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
