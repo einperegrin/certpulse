@@ -10,6 +10,13 @@ const channelNameSchema = z.enum(["email", "webhook", "telegram", "slack", "ntfy
 
 // Config validation per channel. Empty / partial configs are accepted —
 // the sender decides what is "missing required field" at send time.
+//
+// `secret` is an optional HMAC-SHA256 signing secret for the generic
+// webhook channel. When set, the sender computes
+// `HMAC-SHA256(secret, rawBody)` and adds the
+// `X-CertPulse-Signature: sha256=<hex>` + `X-CertPulse-Timestamp`
+// headers so the receiver can verify the alert came from this
+// CertPulse instance. Min length 16, max 256.
 const channelConfigSchema = z
   .object({
     url: z.string().url().optional(),
@@ -19,6 +26,7 @@ const channelConfigSchema = z
     chatId: z.union([z.string(), z.number()]).optional(),
     topic: z.string().optional(),
     server: z.string().optional(),
+    secret: z.string().min(16).max(256).optional(),
   })
   .strict()
   .partial();

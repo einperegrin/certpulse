@@ -31,6 +31,7 @@ const CHANNEL_FIELDS: Record<ChannelKind, { key: string; label: string; type?: s
   ],
   webhook: [
     { key: "url", label: "URL", placeholder: "https://example.com/hook" },
+    { key: "secret", label: "Signing secret (optional, 16+ chars)", type: "password", placeholder: "leave blank to disable signing" },
   ],
   telegram: [
     { key: "botToken", label: "Bot Token", placeholder: "123:abc…" },
@@ -217,6 +218,10 @@ export function ChannelsEditor({ domainId }: { domainId: number }) {
           {" "}
           The global <code>ALERT_EMAIL_TO</code> also creates a synthetic default-email
           channel per domain.
+          {" "}
+          For generic webhooks, set a signing secret (16+ chars) to add
+          {" "}
+          <code>X-CertPulse-Signature: sha256=…</code> + timestamp headers to deliveries.
         </p>
       </CardContent>
     </Card>
