@@ -7,6 +7,7 @@ import {
   getChannelSender,
 } from "./channels.js";
 import { logger } from "./logger.js";
+import { recordAlertOutcome } from "../lib/metrics.js";
 
 export type AlertLevel = "warning" | "urgent" | "critical" | "emergency";
 export type AlertSource = "cert" | "domain";
@@ -288,6 +289,7 @@ async function dispatchOne(
     });
     if (!claim.isNew) {
       results.push({ channel: channelName, source, level: level.level, status: "deduped" });
+      recordAlertOutcome(channelName, source, "deduped");
       continue;
     }
     let cfg: Record<string, unknown> = {};

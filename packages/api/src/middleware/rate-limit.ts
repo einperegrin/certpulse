@@ -19,10 +19,21 @@
  * are excluded — healthchecks and Prometheus scrapes can be much
  * more frequent than user-driven API traffic and would otherwise
  * trigger 429s.
+ *
+ * v0.4: also bumps two Prometheus counters for the Grafana dashboard:
+ *   - `certpulse_rate_limit_hits_total{path}` on every 429
+ *   - `certpulse_http_requests_total{method, path, status}` on every
+ *     request that gets through (and on 429, with status="429" so the
+ *     dashboard's "top error endpoints" panel catches rate-limited
+ *     routes).
  */
 import type { MiddlewareHandler } from "hono";
 import { RateLimiterMemory } from "rate-limiter-flexible";
 import { logger } from "../services/logger.js";
+import {
+  httpRequestsTotal,
+  rateLimitHitsTotal,
+} from "../lib/metrics.js";
 
 const DEFAULT_RPM = 100;
 
@@ -67,6 +78,27 @@ function clientIp(c: { req: { header: (name: string) => string | undefined } }):
 }
 
 /**
+ * Use the route's matched path template (e.g. "/api/domains/:id") as
+ * the `path` label, not the literal URL. This is what the Grafana
+ * dashboard's "top 10 error endpoints" panel expects — it groups all
+ * `/api/domains/42` and `/api/domains/7` calls into a single series
+ * `/api/domains/:id` so cardinality stays bounded.
+ *
+ * Hono exposes the matched route at `c.req.routePath`. If a request
+ * 404s before route matching (e.g. /api/unknown), `routePath` is
+ * `undefined` — fall back to `c.req.path` and clip to the first two
+ * URL segments to keep cardinality bounded anyway.
+ */
+function pathLabel(c: { req: { routePath?: string; path: string } }): string {
+  const rp = c.req.routePath;
+  if (rp && typeof rp === "string" && rp.length > 0) return rp;
+  // Fallback for unmatched routes. Bucket to keep cardinality low.
+  const segs = c.req.path.split("/").filter(Boolean);
+  if (segs.length <= 2) return c.req.path;
+  return "/" + segs.slice(0, 2).join("/") + "/*";
+}
+
+/**
  * Returns a Hono middleware that consumes one token from the per-IP
  * bucket and returns 429 with `Retry-After` when exhausted.
  *
@@ -76,9 +108,13 @@ function clientIp(c: { req: { header: (name: string) => string | undefined } }):
  */
 export function createRateLimitMiddleware(): MiddlewareHandler {
   return async (c, next) => {
+    const start = process.hrtime.bigint();
     // AUTH_DISABLED dev mode is a special case; we still rate-limit
     // to keep dev behaviour close to prod.
     const ip = clientIp(c);
+    const path = pathLabel(c);
+    const method = c.req.method;
+    let status = 200;
     try {
       await getLimiter().consume(ip, 1);
     } catch (rej) {
@@ -91,11 +127,35 @@ export function createRateLimitMiddleware(): MiddlewareHandler {
       const retryAfterSec = Math.max(1, Math.ceil(msBeforeNext / 1000));
       logger.warn({ ip, path: c.req.path, retryAfterSec }, "rate limit exceeded");
       c.header("Retry-After", String(retryAfterSec));
+      rateLimitHitsTotal.inc({ path });
+      status = 429;
+      httpRequestsTotal.inc({ method, path, status: "429" });
       return c.json(
         { error: "Too many requests", retryAfter: retryAfterSec },
         429
       );
     }
-    return next();
+    try {
+      await next();
+      status = c.res?.status ?? 200;
+    } finally {
+      // Record the request counter AFTER the handler so we see the
+      // real status code (Hono sets it on `c.res` by the time the
+      // `await next()` resolves). Falling back to 200 if not set.
+      const statusStr = String(status);
+      httpRequestsTotal.inc({ method, path, status: statusStr });
+      // Cheap duration observation — re-use the existing histogram.
+      // (httpRequestDurationSeconds is registered in lib/metrics.ts
+      // with labels {result, method}; v0.4 keeps the existing label
+      // set so we don't break scrapers.)
+      const elapsedSec = Number(process.hrtime.bigint() - start) / 1e9;
+      // We import lazily to avoid a circular import in tests that
+      // reset module state.
+      const { httpRequestDurationSeconds } = await import("../lib/metrics.js");
+      httpRequestDurationSeconds.observe(
+        { result: status >= 500 ? "error" : status >= 400 ? "client_error" : "ok", method },
+        elapsedSec
+      );
+    }
   };
 }
