@@ -1,10 +1,35 @@
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
+import { z } from "zod";
 import { type DB, getDb } from "../db/index.js";
 import { checks, domains } from "../db/schema.js";
+import { openApiRegistry } from "../openapi/registry.js";
+import { dashboardSchema } from "../openapi/schemas.js";
 
 export function createDashboardRouter(db: DB = getDb()): Hono {
   const app = new Hono();
+
+  // Document /api/dashboard. The response shape is fully described by
+  // the shared `dashboardSchema`; the `domains` array element shape is
+  // left as `z.unknown()` because the live payload is a Drizzle row
+  // left-joined with the latest check (see the `lastCheck` subobject
+  // in `DomainWithCheck`). Tightening that further is left to a
+  // follow-up; the spec is still useful as-is.
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/dashboard",
+    summary: "Get the dashboard summary",
+    tags: ["dashboard"],
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: {
+        description: "Summary counts + the per-domain list",
+        content: {
+          "application/json": { schema: dashboardSchema },
+        },
+      },
+    },
+  });
 
   app.get("/", (c) => {
     const allDomains = db

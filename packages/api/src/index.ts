@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { swaggerUI } from "@hono/swagger-ui";
 import { getDb, closeDb, type DB } from "./db/index.js";
 import { runSqlMigrations } from "./db/sqlmigrate.js";
 import { createDomainsRouter } from "./routes/domains.js";
@@ -21,6 +22,7 @@ import {
   registry,
   tokensTotal,
 } from "./lib/metrics.js";
+import { buildOpenApiDocument, openApiRegistry, z } from "./openapi/registry.js";
 import { sql, eq, desc } from "drizzle-orm";
 import { alerts, apiTokens, domains, schedulerState } from "./db/schema.js";
 
@@ -167,6 +169,82 @@ export function createApp(options?: { db?: DB }) {
     });
   });
 
+  // OpenAPI spec + Swagger UI. Mounted BEFORE auth and rate-limit so
+  // the spec is publicly browsable (this is the whole point of a
+  // machine-readable spec — tools fetch it without a token, then use
+  // the token to call the real endpoints).
+  //
+  // The spec is generated on demand from the OpenAPI registry: every
+  // route that has registered `describeRoute(...)` contributes a path.
+  // Caching would matter at scale; for a self-hosted monitor with a
+  // handful of routes, the cost of regeneration is negligible.
+  app.get("/api/openapi.json", (c) => {
+    const url = new URL(c.req.url);
+    const base = `${url.protocol}//${url.host}`;
+    const doc = buildOpenApiDocument(base);
+    return c.json(doc);
+  });
+  app.get(
+    "/api/docs",
+    swaggerUI({
+      url: "/api/openapi.json",
+      title: "CertPulse API — Swagger UI",
+    })
+  );
+
+  // Document the public-utility endpoints (health, metrics, openapi,
+  // swagger UI) so the spec is complete. They are tagged
+  // "infrastructure" and explicitly carry `security: []` so callers
+  // know they are exempt from Bearer auth.
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/health/live",
+    tags: ["infrastructure"],
+    summary: "Liveness probe (no auth)",
+    security: [],
+    responses: { 200: { description: "Process is up" } },
+  });
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/health/ready",
+    tags: ["infrastructure"],
+    summary: "Readiness probe — DB ping + last-tick/last-alert ages (no auth)",
+    security: [],
+    responses: {
+      200: { description: "DB reachable" },
+      503: { description: "DB unreachable" },
+    },
+  });
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/metrics",
+    tags: ["infrastructure"],
+    summary: "Prometheus scrape endpoint (no auth)",
+    security: [],
+    responses: {
+      200: {
+        description: "prom-client text format",
+        content: { "text/plain": { schema: { type: "string" } } },
+      },
+    },
+  });
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/openapi.json",
+    tags: ["infrastructure"],
+    summary: "This OpenAPI document (no auth)",
+    security: [],
+    responses: { 200: { description: "OpenAPI 3.1 JSON document" } },
+  });
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/docs",
+    tags: ["infrastructure"],
+    summary: "Swagger UI for this OpenAPI document (no auth)",
+    security: [],
+    responses: { 200: { description: "HTML page rendering the Swagger UI" } },
+  });
+
   // Bearer-token auth on every /api/* route. Skips /health and
   // /metrics (registered above before this middleware) and is bypassed
   // only when AUTH_DISABLED is set (dev mode — see auth.ts).
@@ -189,6 +267,15 @@ export function createApp(options?: { db?: DB }) {
     const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 200);
     return c.json({ alerts: recentAlerts(limit) });
   });
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/alerts",
+    tags: ["alerts"],
+    summary: "Recent alert dispatches (in-memory ring buffer)",
+    security: [{ bearerAuth: [] }],
+    request: { query: z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }) },
+    responses: { 200: { description: "OK" } },
+  });
 
   // M-3: don't expose ALERT_EMAIL_TO — that's a PII risk in shared
   // environments. The dashboard only needs to know "is resend
@@ -199,6 +286,14 @@ export function createApp(options?: { db?: DB }) {
       hasResend: Boolean(process.env.RESEND_API_KEY),
     })
   );
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/config",
+    tags: ["config"],
+    summary: "Public runtime config (check interval, resend presence)",
+    security: [{ bearerAuth: [] }],
+    responses: { 200: { description: "OK" } },
+  });
 
   app.notFound((c) => c.json({ error: "Not found" }, 404));
   // Generic onError (H-4 / M-8): never leak internal error messages to

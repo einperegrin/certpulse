@@ -5,6 +5,8 @@ import { type DB, getDb } from "../db/index.js";
 import { alertChannels, domains } from "../db/schema.js";
 import { validateWebhookUrl } from "../services/url-guard.js";
 import { recordAudit } from "../services/audit.js";
+import { openApiRegistry } from "../openapi/registry.js";
+import { channelSchema, errorSchema } from "../openapi/schemas.js";
 
 const channelNameSchema = z.enum(["email", "webhook", "telegram", "slack", "ntfy"]);
 
@@ -100,6 +102,164 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
   app.use("*", async (c, next) => {
     c.set("db", db);
     await next();
+  });
+
+  // OpenAPI: GET /api/domains/:domainId/channels
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/domains/{domainId}/channels",
+    summary: "List alert channels for a domain",
+    tags: ["channels"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({ domainId: z.coerce.number().int() }),
+    },
+    responses: {
+      200: {
+        description: "Channels (plus synthetic default-email if ALERT_EMAIL_TO is set)",
+        content: {
+          "application/json": {
+            schema: z.object({ channels: z.array(channelSchema) }),
+          },
+        },
+      },
+      404: {
+        description: "Domain not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
+  });
+
+  // OpenAPI: POST /api/domains/:domainId/channels
+  openApiRegistry.registerPath({
+    method: "post",
+    path: "/api/domains/{domainId}/channels",
+    summary: "Add (or upsert) a channel for a domain",
+    tags: ["channels"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({ domainId: z.coerce.number().int() }),
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              channel: z.enum(["email", "webhook", "telegram", "slack", "ntfy"]),
+              enabled: z.boolean().optional(),
+              config: z
+                .object({
+                  url: z.string().url().optional(),
+                  to: z.string().email().optional(),
+                  from: z.string().optional(),
+                  botToken: z.string().optional(),
+                  chatId: z.union([z.string(), z.number()]).optional(),
+                  topic: z.string().optional(),
+                  server: z.string().optional(),
+                  secret: z.string().min(16).max(256).optional(),
+                })
+                .optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      201: {
+        description: "Channel created",
+        content: {
+          "application/json": { schema: z.object({ channel: channelSchema }) },
+        },
+      },
+      200: {
+        description: "Channel updated (upsert)",
+        content: {
+          "application/json": { schema: z.object({ channel: channelSchema }) },
+        },
+      },
+      400: {
+        description: "Invalid body or URL rejected by SSRF guard",
+        content: { "application/json": { schema: errorSchema } },
+      },
+      404: {
+        description: "Domain not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
+  });
+
+  // OpenAPI: PATCH /api/domains/:domainId/channels/:id
+  openApiRegistry.registerPath({
+    method: "patch",
+    path: "/api/domains/{domainId}/channels/{id}",
+    summary: "Update an existing channel",
+    tags: ["channels"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({
+        domainId: z.coerce.number().int(),
+        id: z.coerce.number().int(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              enabled: z.boolean().optional(),
+              config: z
+                .object({
+                  url: z.string().url().optional(),
+                  to: z.string().email().optional(),
+                  from: z.string().optional(),
+                  botToken: z.string().optional(),
+                  chatId: z.union([z.string(), z.number()]).optional(),
+                  topic: z.string().optional(),
+                  server: z.string().optional(),
+                  secret: z.string().min(16).max(256).optional(),
+                })
+                .optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Channel updated",
+        content: {
+          "application/json": { schema: z.object({ channel: channelSchema }) },
+        },
+      },
+      400: {
+        description: "Invalid body or URL rejected by SSRF guard",
+        content: { "application/json": { schema: errorSchema } },
+      },
+      404: {
+        description: "Channel not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
+  });
+
+  // OpenAPI: DELETE /api/domains/:domainId/channels/:id
+  openApiRegistry.registerPath({
+    method: "delete",
+    path: "/api/domains/{domainId}/channels/{id}",
+    summary: "Delete a channel",
+    tags: ["channels"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({
+        domainId: z.coerce.number().int(),
+        id: z.coerce.number().int(),
+      }),
+    },
+    responses: {
+      200: { description: "Deleted" },
+      404: {
+        description: "Channel not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
   });
 
   // List all channels for a domain (includes the synthetic default-email
