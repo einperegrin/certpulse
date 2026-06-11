@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Writable } from "node:stream";
-import pino from "pino";
+import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createHmac } from "node:crypto";
 import { setEmailApiKey, getChannelSender } from "./channels.js";
 
 describe("alert channel senders", () => {
@@ -57,6 +58,113 @@ describe("alert channel senders", () => {
         process.env
       );
       expect(r.error).toMatch(/invalid/i);
+    });
+  });
+
+  describe("webhook HMAC signature (v0.4.0)", () => {
+    // Tiny test HTTP server that captures the request body + headers,
+    // then returns 200. Used to verify the sender signs the body when
+    // a secret is configured. We listen on 127.0.0.1 so the SSRF URL
+    // guard is happy (we set ALLOW_PRIVATE_HOSTS=1 in beforeEach).
+    let server: Server;
+    let url = "";
+    let received: { body: string; headers: Record<string, string | string[] | undefined> } | null = null;
+
+    beforeEach(async () => {
+      process.env.ALLOW_PRIVATE_HOSTS = "1";
+      received = null;
+      server = createServer((req: IncomingMessage, res) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (c: Buffer) => chunks.push(c));
+        req.on("end", () => {
+          received = {
+            body: Buffer.concat(chunks).toString("utf8"),
+            headers: req.headers,
+          };
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end("{}");
+        });
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const addr = server.address();
+      if (typeof addr !== "object" || !addr) throw new Error("no address");
+      url = `http://127.0.0.1:${addr.port}/hook`;
+    });
+
+    afterEach(async () => {
+      delete process.env.ALLOW_PRIVATE_HOSTS;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    });
+
+    it("signs the body when secret is configured", async () => {
+      // gitleaks-ignore: deterministic test fixture (≥16 chars per zod schema), not a real secret.
+      const secret = "test-fixture-webhook-signing-secret-aaa";
+      const sender = getChannelSender("webhook");
+      const r = await sender.send(
+        {
+          subject: "CertPulse test",
+          text: "body text",
+          level: "warning",
+          hostname: "example.com",
+          daysRemaining: 7,
+          source: "cert",
+        },
+        { url, secret },
+        process.env
+      );
+      expect(r.error).toBeUndefined();
+      expect(r.id).toBe("webhook-200");
+      expect(received).not.toBeNull();
+      const body = received!.body;
+      const sigHeader = received!.headers["x-certpulse-signature"];
+      const tsHeader = received!.headers["x-certpulse-timestamp"];
+      const expected = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
+      expect(typeof sigHeader).toBe("string");
+      expect(sigHeader).toBe(expected);
+      // Timestamp is unix seconds, integer, roughly now.
+      expect(typeof tsHeader).toBe("string");
+      const ts = parseInt(tsHeader as string, 10);
+      const now = Math.floor(Date.now() / 1000);
+      expect(Math.abs(now - ts)).toBeLessThan(10);
+    });
+
+    it("does NOT add signature headers when secret is absent", async () => {
+      const sender = getChannelSender("webhook");
+      const r = await sender.send(
+        {
+          subject: "s",
+          text: "t",
+          level: "warning",
+          hostname: "h",
+          daysRemaining: 5,
+          source: "cert",
+        },
+        { url },
+        process.env
+      );
+      expect(r.error).toBeUndefined();
+      expect(received).not.toBeNull();
+      expect(received!.headers["x-certpulse-signature"]).toBeUndefined();
+      expect(received!.headers["x-certpulse-timestamp"]).toBeUndefined();
+    });
+
+    it("does NOT add signature headers when secret is an empty string", async () => {
+      const sender = getChannelSender("webhook");
+      const r = await sender.send(
+        {
+          subject: "s",
+          text: "t",
+          level: "warning",
+          hostname: "h",
+          daysRemaining: 5,
+          source: "cert",
+        },
+        { url, secret: "" },
+        process.env
+      );
+      expect(r.error).toBeUndefined();
+      expect(received!.headers["x-certpulse-signature"]).toBeUndefined();
+      expect(received!.headers["x-certpulse-timestamp"]).toBeUndefined();
     });
   });
 
