@@ -19,6 +19,8 @@ import {
   dbQueryDurationSeconds,
   domainsTotal,
   httpRequestDurationSeconds,
+  lastAlertTimestampSeconds,
+  lastCheckTimestampSeconds,
   registry,
   tokensTotal,
 } from "./lib/metrics.js";
@@ -46,6 +48,13 @@ function dbPing(db: DB): boolean {
  * Refresh gauge metrics that are derived from the DB. Called on
  * /health/ready and on /metrics scrapes; cheap because the row
  * counts are tiny.
+ *
+ * v0.4: also refreshes `certpulse_last_check_timestamp_seconds` and
+ * `certpulse_last_alert_timestamp_seconds` so the Grafana "last check
+ * age" / "last alert age" gauges always reflect the current state of
+ * the DB at scrape time (the scheduler does NOT set them inline — a
+ * missed tick would otherwise leave a stale value). (v0.4 / Grafana
+ * panels 6 + 7.)
  */
 function refreshGauges(db: DB): void {
   try {
@@ -62,6 +71,41 @@ function refreshGauges(db: DB): void {
     tokensTotal.set(Number(t));
   } catch (err) {
     logger.warn({ err }, "failed to refresh tokens gauge");
+  }
+  try {
+    const row = db
+      .select({ value: schedulerState.value })
+      .from(schedulerState)
+      .where(eq(schedulerState.key, "last_tick"))
+      .all()[0];
+    if (row?.value) {
+      const ts = Date.parse(row.value);
+      lastCheckTimestampSeconds.set(Number.isNaN(ts) ? 0 : Math.floor(ts / 1000));
+    } else {
+      lastCheckTimestampSeconds.set(0);
+    }
+  } catch (err) {
+    logger.warn({ err }, "failed to refresh last_check gauge");
+  }
+  try {
+    const row = db
+      .select({ createdAt: alerts.createdAt })
+      .from(alerts)
+      .orderBy(desc(alerts.createdAt))
+      .limit(1)
+      .all()[0];
+    if (row?.createdAt) {
+      // Schema uses `datetime('now')` (space-separated) — try ISO first,
+      // fall back to the SQLite format. Either way, NaN => 0 so the
+      // gauge is never undefined.
+      let ts = Date.parse(row.createdAt);
+      if (Number.isNaN(ts)) ts = Date.parse(row.createdAt.replace(" ", "T") + "Z");
+      lastAlertTimestampSeconds.set(Number.isNaN(ts) ? 0 : Math.floor(ts / 1000));
+    } else {
+      lastAlertTimestampSeconds.set(0);
+    }
+  } catch (err) {
+    logger.warn({ err }, "failed to refresh last_alert gauge");
   }
 }
 
