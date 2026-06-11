@@ -218,6 +218,31 @@ npm run typecheck    # tsc --noEmit in both packages
 
 The web dev server proxies `/api/*` to `http://localhost:3000` by default. Override with `VITE_API_URL`.
 
+## 💾 Backup & restore (v0.4+)
+
+Self-hosted data is the user's most important asset. A backup is a single `.tar.gz` containing the SQLite database, a redacted copy of `.env`, a `manifest.json`, and a one-liner `README.md` describing the restore command.
+
+```bash
+# from the api package directory (packages/api) or inside the container
+npm run backup:create                    # writes ./certpulse-backup-YYYYMMDD-HHMMSS.tar.gz
+npm run backup:create -- /tmp/cp.tar.gz  # custom output path
+
+# flags
+#   --db-path <path>   override SQLite path (default: $DB_PATH or /app/data/certpulse.db)
+#   --env-path <path>  override .env location (default: $ENV_PATH or $CWD/.env)
+
+# restore (asks for confirmation unless --yes)
+npm run backup:restore -- /tmp/cp.tar.gz --yes
+```
+
+The restore command:
+
+1. Reads `manifest.json` from the archive and prints what will be restored.
+2. Backs up the live DB to `<db-path>.pre-restore` before overwriting it.
+3. Drops a redacted `.env.restored` next to the configured `.env` path (existing `.env` is **never** overwritten silently — diff and merge manually).
+
+Secret redaction rules: `RESEND_API_KEY`, `ALERT_EMAIL_TO`, and any variable ending in `_KEY`, `_SECRET`, `_TOKEN`, or `_PASSWORD` has its value replaced with `<redacted>` in the archived `.env`.
+
 ## ✅ Acceptance criteria
 
 - [x] `docker compose up` starts both services
