@@ -21,6 +21,7 @@
 import { and, desc, eq, gte, like, lte, sql, type SQL } from "drizzle-orm";
 import type { DB } from "../db/index.js";
 import { auditLog } from "../db/schema.js";
+import { auditLogWritesTotal } from "../lib/metrics.js";
 
 export type ActorType = "user" | "api_token" | "system";
 
@@ -40,6 +41,11 @@ export interface AuditEntry {
  * schema; we accept a plain object and let drizzle handle the
  * encoding. Caller passes the `DB` so this is testable without a
  * global.
+ *
+ * Also bumps `certpulse_audit_log_writes_total{action, resource_type}`
+ * so the Grafana "audit log activity" panel (v0.4) has a signal.
+ * `action` is split on the first dot so "domain.create" becomes the
+ * label "domain" — same convention the UI's action filter uses.
  */
 export function recordAudit(db: DB, entry: AuditEntry): void {
   db.insert(auditLog)
@@ -52,6 +58,8 @@ export function recordAudit(db: DB, entry: AuditEntry): void {
       metadata: entry.metadata,
     })
     .run();
+  const actionLabel = entry.action.split(".", 1)[0] ?? entry.action;
+  auditLogWritesTotal.inc({ action: actionLabel, resource_type: entry.resourceType });
 }
 
 /**

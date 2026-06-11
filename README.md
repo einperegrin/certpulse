@@ -145,6 +145,80 @@ curl -X POST http://localhost:3000/api/domains \
   -d '{"hostname": "example.com"}'
 ```
 
+## 📊 Monitoring with Grafana (v0.4+)
+
+The API exposes Prometheus metrics at `GET /metrics` (no auth — like `/health/*`). A ready-to-import Grafana dashboard is shipped in the repo at [`packages/api/grafana/certpulse-dashboard.json`](./packages/api/grafana/certpulse-dashboard.json).
+
+The dashboard is hand-authored, schemaVersion 38 (Grafana 10+), and shows 8 panels in a 2×4 grid:
+
+| # | Panel | PromQL (essence) |
+|---|-------|------------------|
+| 1 | HTTP request duration (p50 / p95 / p99) | `histogram_quantile(0.5/0.95/0.99, sum(rate(certpulse_http_request_duration_seconds_bucket[5m])) by (le))` |
+| 2 | Checks per second | `sum(rate(certpulse_checks_total[5m]))` |
+| 3 | Alerts sent (by channel) | `sum by (channel) (rate(certpulse_alerts_sent_total[5m]))` |
+| 4 | Rate-limit hits | `sum(rate(certpulse_rate_limit_hits_total[5m]))` |
+| 5 | HTTP requests by status | `sum by (status) (rate(certpulse_http_requests_total[5m]))` |
+| 6 | Last check age (s) | `time() - certpulse_last_check_timestamp_seconds` |
+| 7 | Last alert age (s) | `time() - certpulse_last_alert_timestamp_seconds` |
+| 8 | Top 10 endpoints by 5xx rate | `topk(10, sum by (path) (rate(certpulse_http_requests_total{status=~"5.."}[5m])))` |
+
+### Import the dashboard
+
+1. **Start Prometheus** scraping the API. Minimal `prometheus.yml`:
+   ```yaml
+   scrape_configs:
+     - job_name: certpulse
+       metrics_path: /metrics
+       static_configs:
+         - targets: ["localhost:3000"]   # or `api:3000` inside docker compose
+   ```
+2. **In Grafana**: Dashboards → New → Import → upload `packages/api/grafana/certpulse-dashboard.json`.
+3. When prompted, pick your Prometheus datasource from the `DS_PROMETHEUS` dropdown. (The dashboard ships with a single template variable so you can switch datasources on a per-folder basis.)
+4. Defaults: **last 6 hours**, **30s refresh**.
+
+### One-command deploy with Grafana + Prometheus
+
+Add to your `docker-compose.yml` (or a sibling file):
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=changeme
+    ports: ["3001:3000"]   # 3000 is taken by the CertPulse API
+    depends_on: [prometheus]
+```
+
+Then open `http://localhost:3001`, add Prometheus as a datasource (`http://prometheus:9090`), and import the JSON.
+
+### Metric reference
+
+All names below are exported by `prom-client` from `packages/api/src/lib/metrics.ts`:
+
+| Metric | Type | Labels | Source |
+|--------|------|--------|--------|
+| `certpulse_http_request_duration_seconds` | Histogram | `result`, `method` | rate-limit middleware (per /api/* request) |
+| `certpulse_http_requests_total` | Counter | `method`, `path`, `status` | rate-limit middleware (every request, including 429s) |
+| `certpulse_checks_total` | Counter | `result` | SSL/TLS check outcome (success/failure) |
+| `certpulse_check_duration_seconds` | Histogram | — | SSL/TLS check wall time |
+| `certpulse_alerts_sent_total` | Counter | `channel`, `source`, `result` | alerter dispatch (sent/failed/deduped/skipped) |
+| `certpulse_alert_send_duration_seconds` | Histogram | `channel` | per-channel send time |
+| `certpulse_rate_limit_hits_total` | Counter | `path` | 429s emitted by the limiter |
+| `certpulse_audit_log_writes_total` | Counter | `action`, `resource_type` | `recordAudit()` in services/audit.ts |
+| `certpulse_last_check_timestamp_seconds` | Gauge | — | set from `scheduler_state.last_tick` on every /metrics scrape |
+| `certpulse_last_alert_timestamp_seconds` | Gauge | — | set from the newest `alerts.createdAt` on every /metrics scrape |
+| `certpulse_domains_total` | Gauge | — | count of rows in `domains` |
+| `certpulse_tokens_total` | Gauge | — | count of rows in `api_tokens` |
+| `certpulse_db_query_duration_seconds` | Histogram | `operation` | per-DB-query timing |
+
+Plus the full set of default Node.js process metrics (event-loop lag, GC, memory, fd count, …) from `prom-client`'s `collectDefaultMetrics()`.
+
 ## ⚙️ Environment variables
 
 | Variable | Required | Default | Notes |

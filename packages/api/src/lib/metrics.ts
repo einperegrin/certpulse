@@ -117,3 +117,69 @@ export function recordAlertOutcome(
 ): void {
   alertsSentTotal.inc({ channel, source, result });
 }
+
+/**
+ * `certpulse_http_requests_total{method, path, status}` — request
+ * count labelled by method, the route's path template (not the
+ * literal URL — see HTTPMetrics below) and the response status. This
+ * is the Prometheus standard for "requests by status" / "top error
+ * endpoints" panels. (v0.4 / Grafana dashboard panel 5 + 8.)
+ */
+export const httpRequestsTotal = new Counter({
+  name: "certpulse_http_requests_total",
+  help: "Total HTTP /api/* requests, labelled by method/path/status",
+  labelNames: ["method", "path", "status"] as const,
+  registers: [registry],
+});
+
+/**
+ * `certpulse_rate_limit_hits_total{path}` — number of times the
+ * in-memory rate limiter rejected a request. Bumped from the
+ * rate-limit middleware on each 429. (v0.4 / Grafana dashboard
+ * panel 4.)
+ */
+export const rateLimitHitsTotal = new Counter({
+  name: "certpulse_rate_limit_hits_total",
+  help: "Total /api/* requests rejected by the rate limiter",
+  labelNames: ["path"] as const,
+  registers: [registry],
+});
+
+/**
+ * `certpulse_audit_log_writes_total{action, resource_type}` — number
+ * of audit rows written, labelled by action prefix (e.g. "domain",
+ * "channel", "token", "auth"). Bumped from `recordAudit` in
+ * services/audit.ts. (v0.4 / Grafana dashboard panel — "audit log
+ * activity".)
+ */
+export const auditLogWritesTotal = new Counter({
+  name: "certpulse_audit_log_writes_total",
+  help: "Total audit log rows written, labelled by action/resource type",
+  labelNames: ["action", "resource_type"] as const,
+  registers: [registry],
+});
+
+/**
+ * `certpulse_last_check_timestamp_seconds` — Unix seconds at the
+ * last scheduler tick. Set from the DB on every /metrics scrape
+ * (see `refreshGauges` in index.ts) so the value is always fresh.
+ * The Grafana "last check age" panel computes `time() -
+ * certpulse_last_check_timestamp_seconds`. (v0.4.)
+ */
+export const lastCheckTimestampSeconds = new Gauge({
+  name: "certpulse_last_check_timestamp_seconds",
+  help: "Unix seconds at the last scheduler tick (or 0 if never)",
+  registers: [registry],
+});
+
+/**
+ * `certpulse_last_alert_timestamp_seconds` — Unix seconds at the
+ * most recent alert row in the DB. Like `lastCheckTimestampSeconds`,
+ * refreshed on every /metrics scrape. (v0.4 / Grafana dashboard
+ * panel 7.)
+ */
+export const lastAlertTimestampSeconds = new Gauge({
+  name: "certpulse_last_alert_timestamp_seconds",
+  help: "Unix seconds at the most recent alert (or 0 if never)",
+  registers: [registry],
+});
