@@ -6,6 +6,8 @@ import { domains, checks } from "../db/schema.js";
 import { runCheckForDomainById } from "../services/checker-runner.js";
 import { isPrivateAddress } from "../services/ssrf-guard.js";
 import { recordAudit } from "../services/audit.js";
+import { openApiRegistry } from "../openapi/registry.js";
+import { domainWithCheckSchema, errorSchema } from "../openapi/schemas.js";
 
 const hostnameSchema = z
   .string()
@@ -31,6 +33,150 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
   app.use("*", async (c, next) => {
     c.set("db", db);
     await next();
+  });
+
+  // OpenAPI: POST /api/domains — add a domain. The runtime handler
+  // still does its own `safeParse` (because the response shape depends
+  // on whether the first check succeeded), so the request schema here
+  // is the source of truth for "what does a valid POST body look
+  // like?".
+  openApiRegistry.registerPath({
+    method: "post",
+    path: "/api/domains",
+    summary: "Add a domain to monitor",
+    tags: ["domains"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              hostname: z.string().min(1).max(253),
+              port: z.number().int().min(1).max(65535).optional(),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      201: {
+        description: "Domain created (and an initial check run)",
+        content: {
+          "application/json": {
+            schema: z.object({
+              domain: z.unknown(),
+              firstCheck: z.unknown().nullable(),
+            }),
+          },
+        },
+      },
+      400: {
+        description: "Invalid hostname/port or blocked by SSRF/port guard",
+        content: { "application/json": { schema: errorSchema } },
+      },
+      409: {
+        description: "Domain already exists",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
+  });
+
+  // OpenAPI: GET /api/domains — list all domains with their last check.
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/domains",
+    summary: "List all monitored domains",
+    tags: ["domains"],
+    security: [{ bearerAuth: [] }],
+    responses: {
+      200: {
+        description: "All domains, newest first, with their latest check",
+        content: {
+          "application/json": {
+            schema: z.object({ domains: z.array(domainWithCheckSchema) }),
+          },
+        },
+      },
+    },
+  });
+
+  // OpenAPI: GET /api/domains/:id
+  openApiRegistry.registerPath({
+    method: "get",
+    path: "/api/domains/{id}",
+    summary: "Get a single domain + its 10 most recent checks",
+    tags: ["domains"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({ id: z.coerce.number().int() }),
+    },
+    responses: {
+      200: {
+        description: "Domain + recent checks",
+        content: {
+          "application/json": {
+            schema: z.object({
+              domain: z.unknown(),
+              checks: z.array(z.unknown()),
+            }),
+          },
+        },
+      },
+      404: {
+        description: "Not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
+  });
+
+  // OpenAPI: DELETE /api/domains/:id
+  openApiRegistry.registerPath({
+    method: "delete",
+    path: "/api/domains/{id}",
+    summary: "Delete a domain (and its channels, via FK cascade)",
+    tags: ["domains"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({ id: z.coerce.number().int() }),
+    },
+    responses: {
+      200: { description: "Deleted" },
+      404: {
+        description: "Not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
+  });
+
+  // OpenAPI: POST /api/domains/:id/check
+  openApiRegistry.registerPath({
+    method: "post",
+    path: "/api/domains/{id}/check",
+    summary: "Force an immediate SSL check for one domain",
+    tags: ["domains"],
+    security: [{ bearerAuth: [] }],
+    request: {
+      params: z.object({ id: z.coerce.number().int() }),
+    },
+    responses: {
+      200: {
+        description: "Check ran",
+        content: {
+          "application/json": {
+            schema: z.object({ ok: z.boolean(), outcome: z.unknown() }),
+          },
+        },
+      },
+      404: {
+        description: "Domain not found",
+        content: { "application/json": { schema: errorSchema } },
+      },
+      500: {
+        description: "Check failed (network / TLS error)",
+        content: { "application/json": { schema: errorSchema } },
+      },
+    },
   });
 
   app.post("/", async (c) => {
