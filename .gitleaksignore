@@ -1,0 +1,7 @@
+# gitleaks ignore file — false-positive suppressions for deterministic test fixtures.
+# Format: <file-path>:<rule-id>:<line>
+# The strings below are NOT real secrets: they are test fixtures used in unit tests
+# to exercise the HMAC webhook signing code path. They match the `generic-api-key`
+# rule only because of their high entropy, not because they are real API keys.
+
+packages/api/src/services/channels.test.ts:generic-api-key:100

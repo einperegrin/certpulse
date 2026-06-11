@@ -97,7 +97,8 @@ describe("alert channel senders", () => {
     });
 
     it("signs the body when secret is configured", async () => {
-      const secret = "test-secret-1234567890";
+      // gitleaks-ignore: deterministic test fixture (≥16 chars per zod schema), not a real secret.
+      const secret = "test-fixture-webhook-signing-secret-aaa";
       const sender = getChannelSender("webhook");
       const r = await sender.send(
         {
