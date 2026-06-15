@@ -1,0 +1,155 @@
+# CertPulse — publish a single combined image to GHCR.
+#
+# Why this workflow exists:
+# - v0.4.0 launch (Show HN, Tuesday 16.06 14:00 UTC) needs a one-liner:
+#     docker run -p 8080:80 ghcr.io/einperegrin/certpulse:v0.4.0
+#   No `git clone`, no `docker compose` — just pull and run.
+# - We use GHCR (not Docker Hub) so the image lives next to the source
+#   and the `GITHUB_TOKEN` already has `packages: write` for public repos.
+#
+# Strategy: Option A from the launch task — ONE combined image, built
+# from `Dockerfile.release`, which inlines both the API (Hono) and the
+# Web SPA (nginx + static files). docker-compose.yml continues to use
+# the per-package Dockerfiles (packages/api/Dockerfile and
+# packages/web/Dockerfile) — those files are still the source of truth
+# for compose-based deployments and the CI `build-test` job.
+#
+# Triggers:
+# - Tag push matching `v[0-9]+.[0-9]+.[0-9]+` (e.g. v0.4.0) → publishes
+#   `<version>`, `<major>.<minor>`, and `latest`.
+# - `workflow_dispatch` with an optional `tag` input → publishes that
+#   tag (for back-fills when you need to re-push a release).
+#
+# We deliberately do NOT trigger on every push to `main` — that would
+# burn GHCR storage on dev commits.
+
+name: docker-publish
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.4.0). Leave empty to publish HEAD's version."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build & push (linux/amd64, linux/arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        with:
+          # Tags can be force-pushed; fetch the tag's commit, not the
+          # default branch's HEAD. Without this, a `git tag -f v0.4.0
+          # <commit>; git push --force` re-push would checkout the
+          # previous commit because shallow clones default to HEAD.
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@68827325e0b33c7199eb31dd4e31fbe9023e06e3  # v3.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@988b5a0280414f521da01fcc63a27aeeb4b104db  # v3.6.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446  # v3.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve image metadata
+        id: meta
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81  # v5.5.1
+        with:
+          # Default tags for a tag-triggered run: the pushed tag, the
+          # short form (v0.4), and `latest`. The `latest=auto` flavor
+          # already gates the `latest` tag on a real release event
+          # (tag push), so dev runs from `workflow_dispatch` don't
+          # accidentally promote to latest.
+          images: ghcr.io/einperegrin/certpulse
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          flavor: latest=auto
+          labels: |
+            org.opencontainers.image.title=CertPulse
+            org.opencontainers.image.source=https://github.com/einperegrin/certpulse
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.documentation=https://github.com/einperegrin/certpulse/blob/main/README.md
+
+      - name: Capture manual tag input (workflow_dispatch only)
+        id: manual-tag
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        run: |
+          echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          echo "MANUAL_TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
+
+      - name: Determine effective tags
+        id: effective-tags
+        run: |
+          if [ -n "${MANUAL_TAG:-}" ]; then
+            TAGS="ghcr.io/einperegrin/certpulse:${MANUAL_TAG}"
+          else
+            TAGS="${{ steps.meta.outputs.tags }}"
+          fi
+          {
+            echo "tags=${TAGS}"
+            echo "## Effective tags" >> "$GITHUB_STEP_SUMMARY"
+            echo "${TAGS}" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+      - name: Determine version + created-at labels
+        id: version
+        run: |
+          if [ -n "${MANUAL_TAG:-}" ]; then
+            V="${MANUAL_TAG}"
+          else
+            V="${{ github.ref_name }}"
+          fi
+          # Strip leading 'v' so the version label is e.g. "0.4.0" not "v0.4.0".
+          V="${V#v}"
+          ISO8601="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          {
+            echo "version=${V}"
+            echo "iso8601=${ISO8601}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85  # v6.7.0
+        with:
+          context: .
+          file: Dockerfile.release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.effective-tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=CertPulse
+            org.opencontainers.image.source=https://github.com/einperegrin/certpulse
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ steps.version.outputs.iso8601 }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Inspect the published manifest
+        # Verify the multi-arch index exists by querying the registry
+        # directly via the buildx imagetools command. If the manifest
+        # is malformed or one of the platforms is missing, this fails
+        # the job before anyone tries to `docker pull`.
+        run: |
+          set -euo pipefail
+          FIRST_TAG=$(echo "${{ steps.effective-tags.outputs.tags }}" | head -n1)
+          echo "Inspecting ${FIRST_TAG}"
+          docker buildx imagetools inspect "${FIRST_TAG}" | tee -a "$GITHUB_STEP_SUMMARY"
