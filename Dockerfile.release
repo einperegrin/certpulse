@@ -1,0 +1,173 @@
+# CertPulse release image — single combined image that runs both the
+# API (Hono) and the Web UI (static SPA served by nginx).
+#
+# Why a single image (Option A from the launch task):
+# - The Show HN post / Reddit launch will read `docker run -p 8080:80
+#   ghcr.io/einperegrin/certpulse:v0.4.0` — one image, one command,
+#   zero repo clone.
+# - Everything in compose's api + web services is already built
+#   elsewhere in the repo; this file is a thin wrapper that combines
+#   the prebuilt artefacts into one runtime image.
+#
+# What this image does NOT do (intentionally):
+# - It does NOT use the same multi-stage setup as packages/{api,web}/Dockerfile.
+#   Those files remain the source of truth for compose-based deployments and
+#   for the CI `build-test` job. The release image is a separate, additive
+#   artefact: same code, simpler runtime, single exposed port.
+# - It does NOT use s6-overlay, supervisord, or any extra supervisor. The
+#   start script runs the api in the background with `&`, waits for its
+#   healthcheck, then execs nginx in the foreground (PID 1). The api
+#   is a child of PID 1, which is fine for our hardening model: it runs
+#   as UID 10001, not as root, and the only mutating action it ever
+#   performs is sqlite writes inside /app/data.
+#
+# Hardening carried over from the api/web images:
+# - Same digest-pinned base as packages/api/Dockerfile.
+# - Non-root api process (UID 10001) — node never runs as root.
+# - `no-new-privileges` semantics: capabilities are granted to the
+#   container (not to specific processes) and used only by the
+#   entrypoint script. `setpriv` drops UID before exec-ing node, and
+#   the node process itself has no caps (no-new-privileges means
+#   none can be acquired later).
+# - read_only root filesystem is recommended at run-time via
+#   `--read-only` (a writable tmpfs on /tmp and /app/data is enough
+#   for the api to function; we add a default --tmpfs in the README
+#   snippet). The image itself sets up /app/data as a directory so
+#   the user can `-v certpulse-data:/app/data` cleanly.
+#
+# This file is a sibling to packages/{api,web}/Dockerfile. Do not
+# delete the package Dockerfiles — compose users still need them.
+
+# ----------------------------------------------------------------------------
+# Stage 1: install npm deps (shared by api and web builds).
+# ----------------------------------------------------------------------------
+FROM node:22.13.1-bookworm-slim@sha256:83fdfa2a4de32d7f8d79829ea259bd6a4821f8b2d123204ac467fbe3966450fc AS deps
+WORKDIR /app
+# Same copy pattern as packages/api/Dockerfile — workspace layout.
+COPY package.json package-lock.json ./
+COPY packages/api/package.json ./packages/api/
+COPY packages/web/package.json ./packages/web/
+RUN npm ci --no-audit --no-fund --ignore-scripts
+
+# ----------------------------------------------------------------------------
+# Stage 2: build the api (TypeScript -> dist/).
+# ----------------------------------------------------------------------------
+FROM deps AS api-build
+WORKDIR /app
+COPY packages/api ./packages/api
+RUN cd packages/api && npx tsc -p tsconfig.json
+
+# ----------------------------------------------------------------------------
+# Stage 3: build the web (Vite -> packages/web/dist/).
+# ----------------------------------------------------------------------------
+FROM deps AS web-build
+WORKDIR /app
+COPY packages/web ./packages/web
+RUN cd packages/web && npx vite build
+
+# ----------------------------------------------------------------------------
+# Final stage: combine both prebuilt artefacts into a single runtime image.
+# ----------------------------------------------------------------------------
+FROM node:22.13.1-bookworm-slim@sha256:83fdfa2a4de32d7f8d79829ea259bd6a4821f8b2d123204ac467fbe3966450fc AS runtime
+
+# nginx + tini + wget (for /health) + ca-certs (for outbound HTTPS to RDAP/WHOIS).
+# tini is a tiny init that reaps zombies and forwards signals — without it,
+# PID 1 (our start.sh) would not get SIGTERM from `docker stop`, and a
+# backgrounded `node` child would become a zombie when it exits.
+#
+# nginx is installed from Debian repos without a hard version pin. Rationale:
+# the v0.2 hardening pins the BASE image (node) by digest for security;
+# nginx is a runtime dep that Debian backports security fixes into. Pinning
+# nginx to a patch version means we stop getting those backports, which is
+# worse than the (small) risk of a major-version surprise — Debian 12 (bookworm)
+# only ships one nginx major at a time, and a major bump would land in a
+# different codename entirely.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         ca-certificates \
+         wget \
+         tini \
+         nginx \
+    && rm -rf /var/lib/apt/lists/* \
+    && nginx -v 2>&1 | tee /tmp/nginx-version.txt
+
+ENV NODE_ENV=production
+WORKDIR /app
+
+# Dedicated unprivileged user for the api process. Matches the UID used by
+# packages/api/Dockerfile so a `docker run -v certpulse-data:/app/data` from
+# a previous compose deployment Just Works — the chown in the entrypoint
+# already aligns ownership with this UID.
+RUN groupadd --system --gid 10001 certpulse \
+    && useradd  --system --uid 10001 --gid certpulse --no-create-home --shell /usr/sbin/nologin certpulse
+
+# --- API artefacts ---
+# We copy the compiled api, its package.json (for the right `npm` tree), the
+# root package.json + lockfile, and its migration sources (the entrypoint
+# chowns /app/data on every start, so migrations need to be readable by the
+# unprivileged user that runs `npm run db:migrate`).
+#
+# Layout matches packages/api/Dockerfile (api dist at /app/dist) so the
+# existing api entrypoint script (api-entrypoint.sh, which execs
+# `node dist/index.js`) works unchanged. Only one source of truth for
+# the api runtime layout.
+COPY --from=api-build --chown=root:root      /app/packages/api/dist                ./dist
+COPY --from=api-build --chown=root:root      /app/packages/api/package.json        ./packages/api/package.json
+COPY --from=api-build --chown=root:root      /app/packages/api/docker-entrypoint.sh /usr/local/bin/api-entrypoint.sh
+COPY --from=api-build --chown=root:root      /app/package.json                     ./package.json
+COPY --from=api-build --chown=root:root      /app/package-lock.json                ./package-lock.json
+COPY --from=api-build --chown=certpulse:certpulse /app/packages/api/src/db/migrations   ./dist/db/migrations
+
+RUN chmod 0755 /usr/local/bin/api-entrypoint.sh \
+    # Install with workspace hoisting from the ROOT, not from
+    # /app/packages/api. Running `npm ci` from the workspace root
+    # produces a single hoisted /app/node_modules that contains every
+    # dep from every workspace package — including @hono/swagger-ui
+    # and @hono/zod-openapi (api deps). If we install from
+    # /app/packages/api, npm nests them under packages/api/node_modules
+    # and the api's ESM resolver (which walks up from /app/dist) can't
+    # find them at /app/node_modules. This is the same trap that
+    # packages/api/Dockerfile's `cd /app/packages/api && npm ci` falls
+    # into — except that compose deployment runs the api as the ENTRYPOINT
+    # script's child, not from /app/dist directly. The combined image
+    # does the same thing, so the existing api Dockerfile's behaviour
+    # works there too. We diverge here because the combined image
+    # needs the ESM resolver to find deps from /app/dist.
+    && npm ci --omit=dev --no-audit --no-fund --workspaces --include-workspace-root \
+    && chown -R root:root /app/node_modules \
+    && chmod -R a+rX /app/dist /app/packages /app/package.json /app/package-lock.json /app/node_modules \
+    && npm cache clean --force
+
+# --- Web artefacts (static SPA + nginx config) ---
+# nginx in Debian runs as user `www-data` (UID 33) by default, not `nginx`.
+# We rewrite the master to drop to www-data and chown the writable paths.
+# The release image does NOT use packages/web/nginx.conf (that file expects
+# `http://api:3000` as a Docker-DNS hostname); instead it uses
+# nginx.release.conf which proxies to `http://127.0.0.1:3000` — the
+# in-container loopback where the api listens.
+COPY --from=web-build --chown=www-data:www-data /app/packages/web/dist /var/www/certpulse
+COPY --chown=root:root docker/nginx.release.conf /etc/nginx/sites-available/certpulse
+RUN rm -f /etc/nginx/sites-enabled/default \
+    && ln -s /etc/nginx/sites-available/certpulse /etc/nginx/sites-enabled/certpulse \
+    && mkdir -p /var/cache/nginx /var/log/nginx /var/lib/nginx /run/nginx \
+    && chown -R www-data:www-data /var/cache/nginx /var/log/nginx /var/lib/nginx /run/nginx /var/www/certpulse
+
+# --- The combined-image entrypoint: starts the api, waits for /health, then
+#     execs nginx in the foreground. ---
+COPY --chown=root:root docker/start.sh /usr/local/bin/start.sh
+RUN chmod 0755 /usr/local/bin/start.sh
+
+# The data volume directory. Compose users `docker run -v certpulse-data:/app/data`
+# and the entrypoint chowns it to UID 10001 on every start.
+RUN mkdir -p /app/data && chown 10001:10001 /app/data
+
+# Single exposed port — nginx. The api listens on 3000 inside the container
+# only; nothing on the host can reach it directly.
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=5 \
+  CMD wget -q -O- http://127.0.0.1/health >/dev/null 2>&1 || exit 1
+
+# tini as PID 1 so SIGTERM from `docker stop` reaches start.sh, and any
+# zombies (e.g. the backgrounded api) are reaped on exit.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/start.sh"]
