@@ -97,17 +97,28 @@ jobs:
 
       - name: Determine effective tags
         id: effective-tags
+        # DOCKER_METADATA_OUTPUT_TAGS is multiline (one tag per line).
+        # We can't pipe it through `echo "tags=${TAGS} >> $GITHUB_OUTPUT"`
+        # because GITHUB_OUTPUT is a key=value-only format and drops
+        # everything after the first newline — `docker buildx` would see
+        # an empty tag list. Use the env directly when no manual tag is
+        # set, and keep the single-line override path for workflow_dispatch.
         run: |
           if [ -n "${MANUAL_TAG:-}" ]; then
-            TAGS="ghcr.io/einperegrin/certpulse:${MANUAL_TAG}"
+            {
+              echo "tags=ghcr.io/einperegrin/certpulse:${MANUAL_TAG}"
+              echo "## Effective tags" >> "$GITHUB_STEP_SUMMARY"
+              echo "ghcr.io/einperegrin/certpulse:${MANUAL_TAG}" >> "$GITHUB_STEP_SUMMARY"
+            }
           else
-            TAGS="${{ steps.meta.outputs.tags }}"
+            {
+              echo "tags<<EOF"
+              echo "${DOCKER_METADATA_OUTPUT_TAGS}"
+              echo "EOF"
+              echo "## Effective tags" >> "$GITHUB_STEP_SUMMARY"
+              echo "${DOCKER_METADATA_OUTPUT_TAGS}" >> "$GITHUB_STEP_SUMMARY"
+            } >> "$GITHUB_OUTPUT"
           fi
-          {
-            echo "tags=${TAGS}"
-            echo "## Effective tags" >> "$GITHUB_STEP_SUMMARY"
-            echo "${TAGS}" >> "$GITHUB_STEP_SUMMARY"
-          }
 
       - name: Determine version + created-at labels
         id: version
