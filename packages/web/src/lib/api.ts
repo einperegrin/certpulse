@@ -1,5 +1,44 @@
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 
+/**
+ * API token (bearer). Stored in localStorage so the value survives a
+ * page reload. Empty string = no token, in which case the dashboard
+ * depends on `AUTH_DISABLED=1` on the server (dev mode only — the
+ * production deploy must set this token). (v0.4.1 code-review
+ * CRITICAL — previously the dashboard never sent Authorization and
+ * silently 401'd in production.)
+ */
+const TOKEN_STORAGE_KEY = "certpulse.token";
+
+function readToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeToken(token: string): void {
+  try {
+    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    else localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    /* localStorage unavailable — token stays empty for this session */
+  }
+}
+
+export function setApiToken(token: string): void {
+  writeToken(token);
+}
+
+export function clearApiToken(): void {
+  writeToken("");
+}
+
+export function getApiToken(): string {
+  return readToken();
+}
+
 export interface Domain {
   id: number;
   hostname: string;
@@ -67,23 +106,49 @@ export interface DashboardSummary {
   domains: DomainRow[];
 }
 
+/**
+ * API request helper. Attaches the bearer token from localStorage
+ * (if any) and parses JSON. Throws an `ApiError` (with the HTTP
+ * status) on a non-2xx response. (v0.4.1 code-review HIGH — the
+ * previous version discarded the status code.)
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    ...init,
-  });
+  const token = readToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
-    let body: unknown;
-    try {
-      body = await res.json();
-    } catch {
-      body = await res.text();
+    const status = res.status;
+    let message: string;
+    // Sanitize non-JSON error bodies — a 502 from nginx returns HTML
+    // and dumping that into Error.message makes the UI unusable.
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("application/json")) {
+      try {
+        const body = (await res.json()) as { error?: unknown };
+        message =
+          typeof body?.error === "string" ? body.error : `Request failed: ${status}`;
+      } catch {
+        message = `Request failed: ${status}`;
+      }
+    } else {
+      message = status === 401
+        ? "Unauthorized — check your API token"
+        : `Request failed: ${status}`;
     }
-    const message =
-      typeof body === "object" && body && "error" in body
-        ? String((body as { error: unknown }).error)
-        : `Request failed: ${res.status}`;
-    throw new Error(message);
+    throw new ApiError(status, message);
   }
   return (await res.json()) as T;
 }
@@ -127,7 +192,6 @@ export const api = {
     request<{
       checkIntervalMinutes: number;
       hasResend: boolean;
-      alertEmailTo: string | null;
     }>("/api/config"),
   health: () => request<{ ok: boolean; ts: string }>("/health"),
   listAuditLog: (params?: {

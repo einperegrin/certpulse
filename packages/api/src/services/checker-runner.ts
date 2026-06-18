@@ -7,6 +7,7 @@ import { lookupDomainExpiry } from "./whois.js";
 import { isPrivateAddress } from "./ssrf-guard.js";
 import { checksTotal, checkDurationSeconds } from "../lib/metrics.js";
 import { logger } from "./logger.js";
+import { errMessage } from "./util.js";
 
 /**
  * Error thrown when a check is denied because the hostname resolves to a
@@ -87,15 +88,13 @@ export async function runCheckForDomain(
   checksTotal.inc({ result: result.valid ? "success" : "failure" });
 
   // Run the domain expiry lookup in parallel with the DB insert; we don't
-  // need its result to persist the cert side of the check.
+  // need its result to persist the cert side of the check. The helper
+  // never throws — `lookupDomainExpiry` always resolves with a result
+  // object (errors are folded into `.error`). (v0.4.1 code-review MEDIUM:
+  // the previous `.catch()` was dead code.)
   const whoisPromise = options.skipWhois
     ? Promise.resolve(null)
-    : lookupDomainExpiry(hostname).catch((err) => ({
-        expiresAt: null,
-        daysRemaining: null,
-        registrar: null,
-        error: err instanceof Error ? err.message : String(err),
-      }));
+    : lookupDomainExpiry(hostname);
 
   const inserted = db
     .insert(checks)
@@ -228,7 +227,7 @@ export async function runChecksForAllEnabledDomains(
           domainExpiresDaysRemaining: null,
           domainRegistrar: null,
           checkId: 0,
-          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+          error: errMessage(r.reason),
         });
       }
     });

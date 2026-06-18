@@ -11,6 +11,7 @@
  */
 
 import { createConnection } from "node:net";
+import { isPrivateAddress } from "./ssrf-guard.js";
 
 export interface DomainExpiryResult {
   expiresAt: string | null; // ISO 8601
@@ -237,6 +238,19 @@ async function lookupWhoisFallback(hostname: string): Promise<DomainExpiryResult
     const referral = await queryWhoisServer("whois.iana.org", tld, WHOIS_TIMEOUT_MS);
     const referMatch = referral.match(/(?:refer|whois)\s*[:=]\s*([a-z0-9.-]+\.[a-z]{2,})/i);
     const whoisServer = referMatch?.[1] ?? "whois.iana.org";
+    // SSRF defence: a compromised or hostile IANA response could redirect
+    // us to `refer: 169.254.169.254` (cloud metadata) or another
+    // private target. The same guard the checker uses for TLS handshakes
+    // runs here before we open a TCP socket. (v0.4.1 code-review
+    // CRITICAL.)
+    if (process.env.ALLOW_PRIVATE_HOSTS !== "1" && (await isPrivateAddress(whoisServer))) {
+      return {
+        expiresAt: null,
+        daysRemaining: null,
+        registrar: null,
+        error: "WHOIS referral target is a private address",
+      };
+    }
     const response = await queryWhoisServer(whoisServer, hostname, WHOIS_TIMEOUT_MS);
     const { expiresAt, registrar } = extractWhoisExpiry(response);
     if (!expiresAt) {

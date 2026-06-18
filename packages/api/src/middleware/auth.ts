@@ -37,8 +37,15 @@ export type AuthEnv = {
 
 export function createAuthMiddleware(db: DB): MiddlewareHandler<AuthEnv> {
   return async (c: Context<AuthEnv>, next) => {
-    // Dev escape hatch — NEVER set in production.
-    if (process.env.AUTH_DISABLED) {
+    // Dev escape hatch — NEVER set in production. Strictly compared so
+    // `AUTH_DISABLED=false` (or any other non-"1" value) leaves auth ON.
+    // The composer/scheduler refuse to boot in production with this set.
+    if (process.env.AUTH_DISABLED === "1") {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(
+          "AUTH_DISABLED=1 is forbidden in production. Remove the env var."
+        );
+      }
       return next();
     }
 

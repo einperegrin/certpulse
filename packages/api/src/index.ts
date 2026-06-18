@@ -15,7 +15,6 @@ import { startScheduler, stopScheduler, getCheckIntervalMinutes } from "./servic
 import { recentAlerts } from "./services/alerter.js";
 import { logger } from "./services/logger.js";
 import {
-  checksTotal,
   dbQueryDurationSeconds,
   domainsTotal,
   httpRequestDurationSeconds,
@@ -378,30 +377,50 @@ export function createApp(options?: { db?: DB }) {
   return app;
 }
 
-export function bootstrap() {
+export async function bootstrap() {
   getDb();
   runSqlMigrations();
   const app = createApp();
   const port = parseInt(process.env.PORT ?? "3000", 10);
   const scheduler = startScheduler();
-  // Count the "process booted" event so the metric isn't all-zero
-  // before the first check.
-  checksTotal.inc({ result: "success" }, 0);
   logger.info(
     { port, cron: scheduler.expression, intervalMinutes: scheduler.intervalMinutes },
     `[api] CertPulse API listening on :${port}`
   );
   const server = serve({ fetch: app.fetch, port });
 
-  const shutdown = () => {
+  // Graceful shutdown: stop accepting new connections, wait for in-flight
+  // checks + alerts to finish, then close the DB and exit. Previous
+  // implementation was fire-and-forget — process.exit(0) killed the event
+  // loop while the scheduler lock (running=1) was still set in SQLite,
+  // so the next boot bailed for 30 minutes believing a tick was still
+  // alive. (v0.4.1 code-review CRITICAL.)
+  const shutdown = async () => {
     logger.info("[api] shutting down");
-    stopScheduler();
-    closeDb();
-    server.close();
+    try {
+      stopScheduler();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      closeDb();
+    } catch (err) {
+      logger.error({ err }, "shutdown error");
+    }
     process.exit(0);
   };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", () => void shutdown());
+  process.on("SIGINT", () => void shutdown());
+
+  // Catch-all for anything that escaped every `try/catch`. Log and exit
+  // cleanly so the orchestrator restarts us; without these the process
+  // would just vanish with no trace.
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err }, "uncaughtException");
+    void shutdown();
+  });
+  process.on("unhandledRejection", (reason) => {
+    logger.fatal({ err: reason }, "unhandledRejection");
+    void shutdown();
+  });
+
   return { app, server };
 }
 

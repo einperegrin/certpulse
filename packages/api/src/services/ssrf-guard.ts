@@ -42,6 +42,14 @@ function isPrivateIPv4(ip: string): boolean {
 
 function isPrivateIPv6(ip: string): boolean {
   const lower = ip.toLowerCase().split("%")[0]!; // strip zone-id if any
+  // IPv4-mapped IPv6 (::ffff:1.2.3.4) — the OS routes these to the
+  // embedded IPv4, so the IPv4 guard must run on the unmapped octets.
+  // Without this, `::ffff:10.0.0.1` and `::ffff:169.254.169.254`
+  // (cloud metadata!) bypass the SSRF guard. (v0.4.1 code-review
+  // CRITICAL.)
+  if (lower.startsWith("::ffff:")) {
+    return isPrivateIPv4(lower.slice(7));
+  }
   if (lower === "::1") return true;            // loopback
   if (lower === "::") return true;             // unspecified
   // fe80::/10 link-local (covers fe80, fe90, fea0, feb0)

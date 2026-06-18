@@ -212,151 +212,124 @@ async function dispatchOne(
     source,
   };
 
-  for (const ch of dispatchList) {
-    const channelName = ch.channel as ChannelName;
-    // Atomic dedup (H-2): wrap the "is there a recent alert?" check and
-    // the INSERT of the deduped record in a single transaction. If a
-    // concurrent tick has already recorded an alert for this tuple, the
-    // SELECT inside the transaction will see it and we mark the channel
-    // as deduped without firing.
-    const dedupKey = {
-      domainId,
-      source,
-      channel: channelName,
-      level: level.level,
-    };
-    // Atomic dedup (H-2): the SELECT and the claim INSERT both happen
-    // inside one transaction. A concurrent tick that runs while this
-    // transaction is open blocks on the SQLite writer-lock; when it
-    // gets the lock, the claim row is committed and
-    // `recordAlertAttempt` returns false, so the second tick sees the
-    // dedup. The claim row is created with status="pending" and is
-    // resolved in place once the sender returns (status="sent"/
-    // "failed"/"skipped") via `recordAlertRow` with `pendingId` set —
-    // we UPDATE the same row instead of INSERTing a duplicate, so the
-    // alerts table has exactly one row per dispatch attempt and the
-    // audit log stays clean. (Copilot review: alerter.ts:359.)
-    const claim = db.transaction((tx) => {
-      const fresh = recordAlertAttempt(tx as DB, {
-        ...dedupKey,
-        dedupWindowHours: 24,
-      });
-      if (!fresh) {
-        // Insert the deduped row inside the same transaction so the
-        // audit log still records the suppressed attempt. No pending
-        // row was created, so no `pendingId` to update.
+  // Dispatch channels in parallel so a 5-channel domain with 4 slow
+  // receivers doesn't stall the per-process scheduler lock for 40+
+  // seconds. Each dispatch resolves its own `pendingId` and metric
+  // inside its own try/catch. (v0.4.1 code-review CRITICAL.)
+  await Promise.allSettled(
+    dispatchList.map(async (ch) => {
+      const channelName = ch.channel as ChannelName;
+      const dedupKey = {
+        domainId,
+        source,
+        channel: channelName,
+        level: level.level,
+      };
+      const claim = db.transaction((tx) => {
+        const fresh = recordAlertAttempt(tx as DB, {
+          ...dedupKey,
+          dedupWindowHours: 24,
+        });
+        if (!fresh) {
+          try {
+            tx.insert(alerts)
+              .values({
+                domainId,
+                checkId,
+                source,
+                channel: channelName,
+                level: level.level,
+                status: "deduped",
+              })
+              .run();
+          } catch (err) {
+            logger.error({ err }, "failed to record deduped row");
+          }
+          return { isNew: false, pendingId: undefined as number | undefined };
+        }
+        let pendingId: number | undefined;
         try {
-          tx.insert(alerts)
+          const inserted = tx.insert(alerts)
             .values({
               domainId,
               checkId,
               source,
               channel: channelName,
               level: level.level,
-              status: "deduped",
+              status: "pending",
             })
-            .run();
+            .returning({ id: alerts.id })
+            .all();
+          pendingId = inserted[0]?.id;
         } catch (err) {
-          // Same swallow as the standalone recordAlertRow — we never
-          // want dedup bookkeeping to crash an alert dispatch.
-          logger.error({ err }, "failed to record deduped row");
+          logger.error({ err }, "failed to record pending claim row");
         }
-        return { isNew: false, pendingId: undefined as number | undefined };
+        return { isNew: true, pendingId };
+      });
+      if (!claim.isNew) {
+        results.push({ channel: channelName, source, level: level.level, status: "deduped" });
+        recordAlertOutcome(channelName, source, "deduped");
+        return;
       }
-      // Claim the dedup window by inserting a "pending" row inside the
-      // transaction. A concurrent tick that runs `recordAlertAttempt`
-      // after this commit will see this row and dedupe. We capture
-      // the row id via RETURNING so the dispatch loop can resolve it
-      // to "sent"/"failed"/"skipped" without a second INSERT.
-      let pendingId: number | undefined;
+      let cfg: Record<string, unknown> = {};
       try {
-        const inserted = tx.insert(alerts)
-          .values({
-            domainId,
-            checkId,
-            source,
-            channel: channelName,
-            level: level.level,
-            status: "pending",
-          })
-          .returning({ id: alerts.id })
-          .all();
-        pendingId = inserted[0]?.id;
-      } catch (err) {
-        logger.error({ err }, "failed to record pending claim row");
+        cfg = ch.config ? (JSON.parse(ch.config) as Record<string, unknown>) : {};
+      } catch {
+        cfg = {};
       }
-      return { isNew: true, pendingId };
-    });
-    if (!claim.isNew) {
-      results.push({ channel: channelName, source, level: level.level, status: "deduped" });
-      recordAlertOutcome(channelName, source, "deduped");
-      continue;
-    }
-    let cfg: Record<string, unknown> = {};
-    try {
-      cfg = ch.config ? (JSON.parse(ch.config) as Record<string, unknown>) : {};
-    } catch {
-      cfg = {};
-    }
-    const sender = getChannelSender(channelName);
-    // Pre-flight: channels with missing required config are "skipped", not "failed".
-    // A failed delivery means the sender was invoked but returned an error.
-    // A skipped channel means we never tried to send because config was invalid.
-    //
-    // Special case: email uses a synthetic default channel with empty config
-    // and pulls the recipient from `ALERT_EMAIL_TO` env. The sender handles
-    // that fallback, so we don't pre-flight email.
-    if (channelName !== "email") {
-      const requiredKeys: Record<string, string> = {
-        webhook: "url",
-        telegram: "chatId",
-        slack: "url",
-        ntfy: "topic",
-      };
-      const requiredKey = requiredKeys[channelName];
-      if (requiredKey && (cfg[requiredKey] === undefined || cfg[requiredKey] === null || cfg[requiredKey] === "")) {
-        results.push({
-          channel: channelName, source, level: level.level,
-          status: "skipped",
-          error: `Missing required config: ${requiredKey}`,
-        });
+      const sender = getChannelSender(channelName);
+      if (channelName !== "email") {
+        const requiredKeys: Record<string, string> = {
+          webhook: "url",
+          telegram: "chatId",
+          slack: "url",
+          ntfy: "topic",
+        };
+        const requiredKey = requiredKeys[channelName];
+        if (requiredKey && (cfg[requiredKey] === undefined || cfg[requiredKey] === null || cfg[requiredKey] === "")) {
+          results.push({
+            channel: channelName, source, level: level.level,
+            status: "skipped",
+            error: `Missing required config: ${requiredKey}`,
+          });
+          recordAlertRow(db, {
+            domainId, checkId, source,
+            channel: channelName, level: level.level,
+            status: "skipped",
+            error: `Missing required config: ${requiredKey}`,
+            pendingId: claim.pendingId,
+          });
+          return;
+        }
+      }
+      const sendRes = await sender.send(content, cfg, process.env);
+      if (sendRes.error) {
+        results.push({ channel: channelName, source, level: level.level, status: "failed", error: sendRes.error });
         recordAlertRow(db, {
-          domainId, checkId, source,
-          channel: channelName, level: level.level,
-          status: "skipped",
-          error: `Missing required config: ${requiredKey}`,
+          domainId,
+          checkId,
+          source,
+          channel: channelName,
+          level: level.level,
+          status: "failed",
+          error: sendRes.error,
           pendingId: claim.pendingId,
         });
-        continue;
+      } else {
+        results.push({ channel: channelName, source, level: level.level, status: "sent", messageId: sendRes.id });
+        recordAlertRow(db, {
+          domainId,
+          checkId,
+          source,
+          channel: channelName,
+          level: level.level,
+          status: "sent",
+          messageId: sendRes.id,
+          pendingId: claim.pendingId,
+        });
       }
-    }
-    const sendRes = await sender.send(content, cfg, process.env);
-    if (sendRes.error) {
-      results.push({ channel: channelName, source, level: level.level, status: "failed", error: sendRes.error });
-      recordAlertRow(db, {
-        domainId,
-        checkId,
-        source,
-        channel: channelName,
-        level: level.level,
-        status: "failed",
-        error: sendRes.error,
-        pendingId: claim.pendingId,
-      });
-    } else {
-      results.push({ channel: channelName, source, level: level.level, status: "sent", messageId: sendRes.id });
-      recordAlertRow(db, {
-        domainId,
-        checkId,
-        source,
-        channel: channelName,
-        level: level.level,
-        status: "sent",
-        messageId: sendRes.id,
-        pendingId: claim.pendingId,
-      });
-    }
-  }
+    })
+  );
   return results;
 }
 

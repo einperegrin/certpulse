@@ -15,22 +15,48 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // stub and we don't touch the production database. The stub's
 // `backup()` writes a small marker file at the destination so the
 // resulting tarball is well-formed (it would be empty otherwise).
+//
+// v0.4.1 (code-review CRITICAL #2): `createBackup` switched from
+// `db.$count(table)` (which needed two `as any` casts) to using
+// the raw sqlite client via `getRawSqlite()` so it can use the
+// native `.backup()` API for safe live-DB snapshots. The mock now
+// exposes both `getDb()` (drizzle handle) and `getRawSqlite()`
+// (better-sqlite3 handle) with consistent counts.
 vi.mock("../db/index.js", async () => {
   const { writeFileSync, mkdirSync } = await import("node:fs");
   const { dirname } = await import("node:path");
-  const stmt = { get: () => ({ c: 0 }) };
+  // The mock reports 7/3/11 across the three tables so manifest
+  // assertions can verify non-zero values end-to-end.
+  const counts: Record<string, number> = { checks: 7, domains: 3, alerts: 11 };
+  const stmtFor = (table: string) => ({
+    get: () => ({ c: counts[table] ?? 0 }),
+  });
   return {
     getDb: () => ({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       session: {
         client: {
-          prepare: () => stmt,
+          prepare: (sql: string) => {
+            // Parse "SELECT count(*) AS c FROM <table>"
+            const m = /FROM\s+(\w+)/i.exec(sql);
+            return stmtFor(m?.[1] ?? "");
+          },
           backup: (dest: string) => {
             mkdirSync(dirname(dest), { recursive: true });
             writeFileSync(dest, "fake-sqlite-bytes");
             return Promise.resolve();
           },
         },
+      },
+    }),
+    getRawSqlite: () => ({
+      prepare: (sql: string) => {
+        const m = /FROM\s+(\w+)/i.exec(sql);
+        return stmtFor(m?.[1] ?? "");
+      },
+      backup: (dest: string) => {
+        mkdirSync(dirname(dest), { recursive: true });
+        writeFileSync(dest, "fake-sqlite-bytes");
+        return Promise.resolve();
       },
     }),
     closeDb: () => {},
@@ -157,6 +183,35 @@ describe("createBackup", () => {
         envPath: join(workDir, ".env"),
       })
     ).rejects.toThrow(/not found/i);
+  });
+
+  // v0.4.1 regression: `createBackup` now reads counts via
+  // `getRawSqlite()` instead of `db.$count()` (which needed two `as any`
+  // casts and broke when drizzle changed its driver surface). The mock
+  // returns 7/3/11 for checks/domains/alerts; the manifest inside the
+  // archive must reflect those numbers — not zero, not undefined.
+  it("writes a manifest whose counts match the DB (regression: getRawSqlite path)", async () => {
+    const dbPath = join(workDir, "certpulse.db");
+    writeFileSync(dbPath, "fake");
+    const envPath = join(workDir, ".env");
+    writeFileSync(envPath, "CHECK_INTERVAL=60\n");
+    const out = await createBackup({
+      outputPath: join(workDir, "regression.tar.gz"),
+      dbPath,
+      envPath,
+    });
+    const extractDir = mkdtempSync(join(tmpdir(), "certpulse-bkp-reg-"));
+    const { spawnSync } = await import("node:child_process");
+    spawnSync("tar", ["-xzf", out, "-C", extractDir]);
+    const manifest = JSON.parse(readFileSync(join(extractDir, "manifest.json"), "utf8")) as {
+      checks: number;
+      domains: number;
+      alerts: number;
+    };
+    expect(manifest.checks).toBe(7);
+    expect(manifest.domains).toBe(3);
+    expect(manifest.alerts).toBe(11);
+    rmSync(extractDir, { recursive: true, force: true });
   });
 });
 
