@@ -8,13 +8,20 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
+import type pino from "pino";
 import { createAuthMiddleware } from "./middleware/auth.js";
 import { getCheckIntervalMinutes } from "./services/scheduler.js";
 import { logger } from "./services/logger.js";
 
-// Silence the boot log so test output stays clean.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const setLogLevel = (lvl: string) => ((logger as any).level = lvl);
+// pino's `level` setter is mutable on the instance but TS only exposes
+// the readonly type. We narrow the instance type to the mutable
+// subset we actually need (a `pino.Logger` with a settable `level`).
+// This is the pino-idiomatic way to silence logs from a test without
+// reaching for `as any`.
+type SettableLevelLogger = Pick<pino.Logger, "level"> & { level: pino.LevelWithSilent };
+const setLogLevel = (lvl: pino.LevelWithSilent) => {
+  (logger as unknown as SettableLevelLogger).level = lvl;
+};
 
 function buildApp() {
   const app = new Hono();
@@ -42,7 +49,7 @@ describe("GET /api/config (M-3)", () => {
     savedResend = process.env.RESEND_API_KEY;
     savedInterval = process.env.CHECK_INTERVAL;
     savedLogLevel = process.env.LOG_LEVEL;
-    setLogLevel("silent");
+    setLogLevel("silent" satisfies pino.LevelWithSilent);
     // Short-circuit auth — the test only exercises /api/config.
     process.env.AUTH_DISABLED = "1";
   });
@@ -55,7 +62,9 @@ describe("GET /api/config (M-3)", () => {
     else process.env.RESEND_API_KEY = savedResend;
     if (savedInterval === undefined) delete process.env.CHECK_INTERVAL;
     else process.env.CHECK_INTERVAL = savedInterval;
-    setLogLevel(savedLogLevel ?? "info");
+    if (savedLogLevel === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = savedLogLevel;
+    setLogLevel((savedLogLevel ?? "info") as pino.LevelWithSilent);
   });
 
   it("never exposes ALERT_EMAIL_TO in the response", async () => {

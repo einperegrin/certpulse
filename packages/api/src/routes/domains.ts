@@ -6,6 +6,7 @@ import { domains, checks } from "../db/schema.js";
 import { runCheckForDomainById } from "../services/checker-runner.js";
 import { isPrivateAddress } from "../services/ssrf-guard.js";
 import { recordAudit } from "../services/audit.js";
+import { logger } from "../services/logger.js";
 import { openApiRegistry } from "../openapi/registry.js";
 import { domainWithCheckSchema, errorSchema } from "../openapi/schemas.js";
 
@@ -261,7 +262,12 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
     try {
       firstCheck = await runCheckForDomainById(domain.id, db);
     } catch (err) {
-      firstCheck = { error: err instanceof Error ? err.message : String(err) };
+      // Internal errors must not leak libuv/system strings (e.g.
+      // `getaddrinfo ENOTFOUND <host>`) to the API client. The full
+      // err is logged server-side with the request id.
+      const requestId = crypto.randomUUID();
+      logger.error({ err, requestId, domainId: domain.id }, "first check failed");
+      firstCheck = { error: "check_failed", requestId };
     }
     return c.json({ domain, firstCheck }, 201);
   });
@@ -357,10 +363,11 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
       const outcome = await runCheckForDomainById(id, db);
       return c.json({ ok: true, outcome });
     } catch (err) {
-      return c.json(
-        { error: "Check failed", message: err instanceof Error ? err.message : String(err) },
-        500
-      );
+      // Same sanitizer as POST / — never echo the libuv/TLS message
+      // back to the API client. Full err is logged with the request id.
+      const requestId = crypto.randomUUID();
+      logger.error({ err, requestId, domainId: id }, "manual check failed");
+      return c.json({ error: "check_failed", requestId }, 500);
     }
   });
 
