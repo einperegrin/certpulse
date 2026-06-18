@@ -30,9 +30,9 @@ import {
 import { hostname as osHostname } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
-import { closeDb, getDb, type DB } from "../db/index.js";
-import { sql } from "drizzle-orm";
+import { closeDb, getDb, getRawSqlite, type DB } from "../db/index.js";
 
 /* ------------------------------------------------------------------ */
 /* Argument parsing — tiny manual parser, mirrors the tokens.ts style. */
@@ -91,33 +91,39 @@ interface BackupManifest {
  * numbers reflect the live state at backup time.
  */
 function gatherManifest(db: DB): BackupManifest {
-  const count = (q: ReturnType<typeof sql>): number => {
-    const row = db.run(q as unknown as ReturnType<typeof sql>);
-    // The "SELECT count(*) AS c FROM <table>" query is rendered into a
-    // better-sqlite3 row; grab the first column off the first row.
-    return 0;
-  };
-  // Drizzle doesn't have a clean `count(*)` helper that returns a scalar
-  // synchronously across all versions, so we use raw SQL via `db.run`
-  // and the prepared statement API.
   const tableCount = (table: string): number => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = (db as any).session?.client ?? (db as any).$client;
-    if (raw && typeof raw.prepare === "function") {
-      const stmt = raw.prepare(`SELECT count(*) AS c FROM ${table}`);
-      const row = stmt.get() as { c: number } | undefined;
-      return Number(row?.c ?? 0);
-    }
-    return 0;
+    const raw = getRawSqlite();
+    const stmt = raw.prepare(`SELECT count(*) AS c FROM ${table}`);
+    const row = stmt.get() as { c: number } | undefined;
+    return Number(row?.c ?? 0);
   };
   return {
-    version: process.env.npm_package_version ?? "0.4.0",
+    version: readVersionFromPackage(),
     createdAt: new Date().toISOString(),
     hostname: osHostname(),
     checks: tableCount("checks"),
     domains: tableCount("domains"),
     alerts: tableCount("alerts"),
   };
+}
+
+/**
+ * Read the API package version from the local package.json. We read
+ * the file directly (rather than relying on `npm_package_version` from
+ * the environment) so the version is correct regardless of how the
+ * CLI is invoked — `tsx src/cli/backup.ts` does NOT populate the npm
+ * env var. (v0.4.1 code-review LOW.)
+ */
+function readVersionFromPackage(): string {
+  try {
+    // The CLI lives at packages/api/src/cli/backup.ts; package.json is
+    // at packages/api/package.json — two levels up.
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -249,8 +255,7 @@ export async function createBackup(opts: CreateOptions = {}): Promise<string> {
   //    copy if there's an active writer. We do NOT take an exclusive
   //    lock; the better-sqlite3 .backup handles concurrent writers
   //    internally.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw = (getDb() as any).session?.client ?? (getDb() as any).$client;
+  const raw = getRawSqlite();
   if (raw && typeof raw.backup === "function") {
     console.log(`[backup] snapshotting ${dbPath} -> ${join(stagingDir, "data", "certpulse.db")}`);
     await new Promise<void>((res, rej) => {

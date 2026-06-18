@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Writable } from "node:stream";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { createHmac } from "node:crypto";
+import pino from "pino";
 import { setEmailApiKey, getChannelSender } from "./channels.js";
 
 describe("alert channel senders", () => {
@@ -275,11 +276,13 @@ describe("alert channel senders", () => {
         },
       });
       const { logger } = await import("./logger.js");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const origStream = (logger as any)[Symbol.for("pino.stream")];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (logger as any)[Symbol.for("pino.stream")] = loggerSink;
-      void origStream;
+      // pino exposes its internal stream symbol via `pino.symbols.streamSym`.
+      // The TS type for the stream property is intentionally hidden, so we
+      // narrow through a tiny structural type instead of reaching for `as any`.
+      type PinoStreamHolder = { [k: symbol]: Writable | undefined };
+      const streamHolder = logger as unknown as PinoStreamHolder;
+      const origStream = streamHolder[pino.symbols.streamSym];
+      streamHolder[pino.symbols.streamSym] = loggerSink;
       try {
         const sender = getChannelSender("email");
         const r = await sender.send(
@@ -340,8 +343,7 @@ describe("alert channel senders", () => {
           expect(bodyEmitted).toBe(true);
         }
       } finally {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (logger as any)[Symbol.for("pino.stream")] = origStream;
+        streamHolder[pino.symbols.streamSym] = origStream;
         if (prevTo === undefined) delete process.env.ALERT_EMAIL_TO;
         else process.env.ALERT_EMAIL_TO = prevTo;
       }

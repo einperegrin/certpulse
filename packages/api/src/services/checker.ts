@@ -48,6 +48,34 @@ function pemFromRaw(raw: Buffer | undefined): string {
   return `-----BEGIN CERTIFICATE-----\n${lines}\n-----END CERTIFICATE-----\n`;
 }
 
+/**
+ * Map a raw TLS/network error to a short stable code stored in the
+ * `checks.error` column. The full error is logged server-side; the
+ * API client never sees libuv/TLS internals (e.g. `getaddrinfo
+ * ENOTFOUND …`, `TLS timeout`, `unable to verify the first
+ * certificate`). (v0.4.1 code-review HIGH.)
+ */
+function classifyError(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (!err || typeof err !== "object") return "unknown";
+  const e = err as { code?: string; message?: string };
+  const code = typeof e.code === "string" ? e.code : "";
+  const msg = typeof e.message === "string" ? e.message : "";
+  if (code === "ENOTFOUND") return "dns_not_found";
+  if (code === "ECONNREFUSED") return "connection_refused";
+  if (code === "ETIMEDOUT" || code === "ESOCKETTIMEDOUT") return "tls_timeout";
+  if (code === "ECONNRESET") return "connection_reset";
+  if (code === "CERT_HAS_EXPIRED") return "cert_expired";
+  if (code === "DEPTH_ZERO_SELF_SIGNED_CERT" || code === "SELF_SIGNED_CERT_IN_CHAIN")
+    return "self_signed";
+  if (code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE") return "untrusted_chain";
+  if (code === "ERR_TLS_CERT_ALTNAME_INVALID") return "hostname_mismatch";
+  // Fallback: short non-PII prefix of the message so the operator can
+  // still diagnose from the dashboard without exposing internals.
+  if (msg) return msg.split(/\s+/, 4).join("_").toLowerCase().replace(/[^a-z0-9_]/g, "");
+  return "tls_error";
+}
+
 export function checkSSL(
   hostname: string,
   port = 443,
@@ -135,7 +163,7 @@ export function checkSSL(
           notAfter: null,
           daysRemaining: null,
           rawPem: null,
-          error: err instanceof Error ? err.message : String(err),
+          error: classifyError(err),
         });
       }
     });
@@ -150,7 +178,7 @@ export function checkSSL(
         notAfter: null,
         daysRemaining: null,
         rawPem: null,
-        error: err.message || err.code || "TLS connection failed",
+        error: classifyError(err),
       });
     });
 

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS domains (
 
 CREATE TABLE IF NOT EXISTS checks (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  domain_id       INTEGER NOT NULL REFERENCES domains(id),
+  domain_id       INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
   checked_at      TEXT DEFAULT (datetime('now')),
   valid           INTEGER NOT NULL,
   issuer          TEXT,
@@ -24,8 +24,8 @@ CREATE TABLE IF NOT EXISTS checks (
 
 CREATE TABLE IF NOT EXISTS alerts (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  domain_id   INTEGER NOT NULL REFERENCES domains(id),
-  check_id    INTEGER NOT NULL REFERENCES checks(id),
+  domain_id   INTEGER NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+  check_id    INTEGER NOT NULL REFERENCES checks(id) ON DELETE CASCADE,
   level       TEXT NOT NULL,
   type        TEXT NOT NULL DEFAULT 'email',
   status      TEXT NOT NULL DEFAULT 'pending',
