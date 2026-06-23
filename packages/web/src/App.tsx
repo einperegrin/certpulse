@@ -13,19 +13,16 @@ import { clearApiToken, getApiToken } from "./lib/api";
 export default function App() {
   const [addOpen, setAddOpen] = React.useState(false);
   const location = useLocation();
-  // Re-evaluate on token changes so the header hides its nav when the
-  // user signs out and the Login route is active.
   const [hasToken, setHasToken] = React.useState<boolean>(() => Boolean(getApiToken()));
   React.useEffect(() => {
-    const onStorage = () => setHasToken(Boolean(getApiToken()));
-    window.addEventListener("storage", onStorage);
-    // Same-tab updates: poll once a second when on the login screen
-    // (a sign-in just set the token). Cheap, and avoids re-architecting
-    // the api module to expose an event bus.
-    const interval = window.setInterval(onStorage, 1000);
+    const onTokenChange = () => setHasToken(Boolean(getApiToken()));
+    // Listen for both cross-tab (`storage`) and same-tab (custom event
+    // dispatched by setApiToken/clearApiToken) token changes.
+    window.addEventListener("storage", onTokenChange);
+    window.addEventListener("certpulse.tokenchange", onTokenChange);
     return () => {
-      window.removeEventListener("storage", onStorage);
-      window.clearInterval(interval);
+      window.removeEventListener("storage", onTokenChange);
+      window.removeEventListener("certpulse.tokenchange", onTokenChange);
     };
   }, []);
   const isLoginRoute = location.pathname === "/login";
@@ -63,10 +60,7 @@ export default function App() {
                   size="sm"
                   variant="ghost"
                   data-testid="signout-button"
-                  onClick={() => {
-                    clearApiToken();
-                    setHasToken(false);
-                  }}
+                  onClick={() => clearApiToken()}
                   title="Clear stored token"
                 >
                   <LogOut className="h-4 w-4" />

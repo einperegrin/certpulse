@@ -1,14 +1,7 @@
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
-
-/**
- * API token (bearer). Stored in localStorage so the value survives a
- * page reload. Empty string = no token, in which case the dashboard
- * depends on `AUTH_DISABLED=1` on the server (dev mode only — the
- * production deploy must set this token). (v0.4.1 code-review
- * CRITICAL — previously the dashboard never sent Authorization and
- * silently 401'd in production.)
- */
 const TOKEN_STORAGE_KEY = "certpulse.token";
+// Same-tab token-change signal (storage event only fires cross-tab).
+const TOKEN_EVENT = "certpulse.tokenchange";
 
 function readToken(): string {
   try {
@@ -22,6 +15,7 @@ function writeToken(token: string): void {
   try {
     if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
     else localStorage.removeItem(TOKEN_STORAGE_KEY);
+    window.dispatchEvent(new Event(TOKEN_EVENT));
   } catch {
     /* localStorage unavailable — token stays empty for this session */
   }
@@ -106,12 +100,8 @@ export interface DashboardSummary {
   domains: DomainRow[];
 }
 
-/**
- * API request helper. Attaches the bearer token from localStorage
- * (if any) and parses JSON. Throws an `ApiError` (with the HTTP
- * status) on a non-2xx response. (v0.4.1 code-review HIGH — the
- * previous version discarded the status code.)
- */
+// Attaches the bearer token from localStorage and parses JSON.
+// Throws ApiError on a non-2xx response.
 export class ApiError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -132,12 +122,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const status = res.status;
     let message: string;
-    // Read the body once as text — never try both `res.json()` and
-    // `res.text()`, that throws "body stream already read" because
-    // the underlying ReadableStream can only be consumed once. We then
-    // attempt to JSON.parse the text; if the server returned HTML
-    // (e.g. an nginx 502 page) the parse fails and we fall back to a
-    // clean human message.
+    // Read the body once as text (ReadableStream can only be consumed once).
+    // Try JSON.parse; if the server returned HTML (e.g. nginx 502) fall back.
     const raw = await res.text();
     let parsed: { error?: unknown } | null = null;
     if (raw) {
@@ -154,7 +140,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } else if (status === 502 || status === 503 || status === 504) {
       message = `Server unavailable (${status}). Is the API container running?`;
     } else {
-      // Truncate HTML / giant bodies so the UI message stays readable.
+      // Truncate HTML / large bodies so the UI message stays readable.
       const snippet = raw ? raw.slice(0, 120).replace(/\s+/g, " ").trim() : "";
       message = snippet
         ? `Request failed: ${status} — ${snippet}`

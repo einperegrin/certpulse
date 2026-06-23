@@ -6,32 +6,9 @@ import { Input, Label } from "../components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card";
 import { setApiToken, api, ApiError } from "../lib/api";
 
-/**
- * Login page.
- *
- * Why this exists (v0.5 / Bug 2):
- *   Prior versions stored the API token only in localStorage but had
- *   no UI to enter it — operators had to open devtools to set it.
- *   That works on a developer laptop, it does not work for a real
- *   production deploy where the only way to reach the dashboard is
- *   over HTTPS in a browser.
- *
- * Behaviour:
- *   - If a token is already in localStorage, we immediately redirect
- *     to the destination (or `/`) after a successful /health probe —
- *     no point showing the form if the user is already authenticated.
- *   - On submit we (1) write the token to localStorage, (2) probe
- *     /health to confirm the API is reachable and auth is valid, and
- *     (3) redirect. A 401 here means the token is wrong; a network
- *     error means the API is down — we surface both distinctly.
- *
- * Token storage NOTE:
- *   We deliberately keep the token in localStorage (not a cookie).
- *   nginx strips `Authorization` on the public-facing hop by design
- *   (Task 1.8 hardening) so a cookie would not be sent automatically
- *   anyway. localStorage + the `request()` helper is the supported
- *   path.
- */
+// Login page. Accepts an API token, writes it to localStorage, probes
+// /api/domains to confirm the token is valid, then redirects. Token
+// storage: localStorage (not a cookie); nginx forwards Authorization.
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -56,15 +33,11 @@ export default function Login() {
     setError(null);
     setApiToken(trimmed);
     try {
-      // Probe /api/domains — a protected route that requires auth.
-      // 200 → token is valid. 401 → token is wrong. Network/502 → API
-      // container is down.
+      // 200 → token is valid; 401 → token wrong; network/502 → api is down.
       await api.listDomains();
       navigate(from, { replace: true });
     } catch (err) {
-      // Whatever happened, the form-level UX needs a clean message —
-      // we also clear the token so the user can retry without seeing
-      // a stale Authorization header on the next request.
+      // Clear the token so the user can retry without seeing a stale header.
       setApiToken("");
       if (err instanceof ApiError && err.status === 401) {
         setError("That token was rejected (401). Check `certpulse token list`.");

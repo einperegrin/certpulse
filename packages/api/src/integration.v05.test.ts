@@ -251,15 +251,16 @@ describe("v0.5 launch checklist — rate limit", () => {
   beforeEach(() => {
     vi.stubEnv("AUTH_DISABLED", "");
     const m = makeDb();
-    const token = seedToken(m.db);
+    // Seed a token so the DB has the api_tokens table populated; the
+    // 130 probe requests below are unauthenticated (returns 401), so
+    // we don't need the token value here.
+    seedToken(m.db);
     __resetRateLimiterForTests();
     app = new Hono();
     app.use("/api/*", createRateLimitMiddleware());
     app.use("/api/*", createAuthMiddleware(m.db));
-    // A trivial route to burn through the limit — GET /api/domains is
-    // cheap and returns 200, so a flood of hits will trip the limiter.
+    // Trivial route to burn through the rate limit.
     app.get("/api/_probe", (c) => c.json({ ok: true }));
-    void token;
   });
 
   afterEach(() => {

@@ -1,19 +1,7 @@
 import { expect, type Page, type APIRequestContext } from "@playwright/test";
 
-/**
- * End-to-end test helpers.
- *
- * The api + web preview are started by `playwright.config.ts` →
- * `globalSetup`. It writes three env vars that this module reads:
- *
- *   - CERTPULSE_E2E_API   — base URL of the running api (no trailing slash)
- *   - CERTPULSE_E2E_WEB   — base URL of the running web preview
- *   - CERTPULSE_E2E_TOKEN — a Bearer token that is pre-seeded in the api's DB
- *
- * Test authors should `await loginAs(page)` instead of pasting the token
- * directly — that way the page's `localStorage` matches the test setup
- * exactly and the dashboard renders the authenticated chrome.
- */
+// E2E helpers. The api + web preview are started by playwright.config.ts
+// → globalSetup, which stashes CERTPULSE_E2E_API / _WEB / _TOKEN in env.
 export function apiBase(): string {
   const url = process.env.CERTPULSE_E2E_API;
   if (!url) {
@@ -44,35 +32,17 @@ export function authToken(): string {
   return t;
 }
 
-/**
- * Seed the token into the page's localStorage and reload so RequireAuth
- * picks it up. Avoids having to type into the Login form on every test
- * — that flow has its own dedicated spec.
- */
+// Seed the token into the page's localStorage and reload so RequireAuth
+// picks it up. Avoids having to type into the Login form on every test.
 export async function loginAs(page: Page): Promise<void> {
   await page.goto(webBase());
-  // The token storage key is duplicated from `api.ts` to avoid pulling
-  // the api module into the test process. If the key ever changes in
-  // the source, update it here too.
+  // Key duplicates the one in api.ts; keep both in sync.
   await page.evaluate((t) => {
     localStorage.setItem("certpulse.token", t);
   }, authToken());
   await page.goto(webBase() + "/");
 }
 
-/**
- * Build a Playwright `APIRequestContext` already wired to the api base
- * with the Bearer header pre-set. Used by tests that want to inspect
- * the api state directly (e.g. to assert a 401 on a missing token)
- * without going through the UI.
- */
-export function authedApi(
-  request: APIRequestContext
-): APIRequestContext {
-  return request;
-}
-
-/** Assert that the page is currently on the dashboard. */
 export async function expectDashboard(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/$/);
   await expect(
@@ -80,7 +50,6 @@ export async function expectDashboard(page: Page): Promise<void> {
   ).toBeVisible({ timeout: 15_000 });
 }
 
-/** Click the header "+ Add" button and wait for the dialog. */
 export async function openAddDomainDialog(page: Page): Promise<void> {
   await page.getByRole("button", { name: /^\+\s*add$/i }).click();
   await expect(
@@ -88,35 +57,48 @@ export async function openAddDomainDialog(page: Page): Promise<void> {
   ).toBeVisible();
 }
 
-/**
- * Add a domain via the UI. Returns the hostname (which the caller may
- * want to assert on / clean up). The api will perform a live TLS check;
- * for unreachable hosts we expect the row to still appear (with an
- * error in the last_check) — that's the production behaviour.
- */
-export async function addDomainViaUi(
-  page: Page,
+// Create a domain via the api and return its id.
+export async function seedDomain(
+  request: APIRequestContext,
   hostname: string
-): Promise<void> {
-  await openAddDomainDialog(page);
-  await page.getByLabel(/hostname/i).fill(hostname);
-  await page.getByRole("button", { name: /add.*check now/i }).click();
-  // Wait for the dialog to close — that's the success signal (the
-  // dialog also closes on error, but the table will then show an
-  // error toast; we rely on the row assertion below for that).
-  await expect(
-    page.getByRole("heading", { name: /add domain/i })
-  ).toBeHidden({ timeout: 15_000 });
-  // And wait for the table to show the new hostname.
-  await expect(
-    page.getByRole("cell", { name: new RegExp(hostname.replace(/\./g, "\\.")) })
-  ).toBeVisible({ timeout: 15_000 });
+): Promise<number> {
+  const res = await request.post(`${apiBase()}/api/domains`, {
+    headers: { Authorization: `Bearer ${authToken()}` },
+    data: { hostname, port: 443 },
+  });
+  if (!res.ok()) {
+    throw new Error(`seed failed: ${res.status()} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { domain: { id: number } };
+  return body.domain.id;
 }
 
-/**
- * Wait for `count` rows in the dashboard domain table. Polls because
- * React Query invalidation is asynchronous after a mutation.
- */
+// Delete a domain by id (delete-by-hostname isn't exposed by the api).
+export async function cleanupDomain(
+  request: APIRequestContext,
+  id: number
+): Promise<void> {
+  await request.delete(`${apiBase()}/api/domains/${id}`, {
+    headers: { Authorization: `Bearer ${authToken()}` },
+  });
+}
+
+// Delete a domain by hostname — look up the id first.
+export async function cleanupDomainByHostname(
+  request: APIRequestContext,
+  hostname: string
+): Promise<void> {
+  const list = await request.get(`${apiBase()}/api/domains`, {
+    headers: { Authorization: `Bearer ${authToken()}` },
+  });
+  const body = (await list.json()) as {
+    domains: { id: number; hostname: string }[];
+  };
+  const match = body.domains.find((d) => d.hostname === hostname);
+  if (match) await cleanupDomain(request, match.id);
+}
+
+// Wait for `count` rows in the dashboard domain table.
 export async function expectDomainCount(
   page: Page,
   count: number,
@@ -133,12 +115,10 @@ export async function expectDomainCount(
   );
 }
 
-/** Random suffix so parallel test runs don't collide on hostnames. */
 export function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-/** Convenience: hostname guaranteed-unique per test invocation. */
 export function uniqueHostname(prefix: string): string {
   return `${prefix}-${Date.now()}-${randomSuffix()}.invalid`;
 }
