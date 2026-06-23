@@ -7,6 +7,7 @@ import { validateWebhookUrl } from "../services/url-guard.js";
 import { recordAudit } from "../services/audit.js";
 import { openApiRegistry } from "../openapi/registry.js";
 import { channelSchema, errorSchema } from "../openapi/schemas.js";
+import { toIsoString } from "../lib/datetime.js";
 
 const channelNameSchema = z.enum(["email", "webhook", "telegram", "slack", "ntfy"]);
 
@@ -278,15 +279,12 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
     // Add a synthetic default-email entry if the user has ALERT_EMAIL_TO set
     // and no explicit email row exists for this domain.
     const explicitEmail = rows.find((r) => r.channel === "email");
-    const out = rows.map((r) => ({
-      id: r.id,
-      domainId: r.domainId,
-      channel: r.channel,
-      enabled: r.enabled,
-      config: parseConfig(r.config),
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
+    // Bug #1 fix: route every row through `rowToJson` so the
+    // `createdAt` / `updatedAt` are ISO 8601 with `Z`. Previously
+    // line 288 returned the raw SQLite string, which a UTC+2 browser
+    // would parse as local time and render "Created 2h ago" the
+    // moment the row was inserted.
+    const out = rows.map(rowToJson);
     if (!explicitEmail && process.env.ALERT_EMAIL_TO) {
       out.push({
         id: 0,
@@ -505,8 +503,12 @@ function rowToJson(r: typeof alertChannels.$inferSelect) {
     channel: r.channel,
     enabled: r.enabled,
     config: parseConfig(r.config),
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
+    // v0.5 timezone fix: the row stores `created_at` / `updated_at`
+    // as `YYYY-MM-DD HH:MM:SS` UTC. Rewrite on the way out so the
+    // frontend doesn't show "Created 2h ago" the moment the row is
+    // inserted (Roman's bug, 2026-06-23).
+    createdAt: toIsoString(r.createdAt),
+    updatedAt: toIsoString(r.updatedAt),
   };
 }
 

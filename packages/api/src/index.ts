@@ -24,6 +24,7 @@ import {
   tokensTotal,
 } from "./lib/metrics.js";
 import { buildOpenApiDocument, openApiRegistry, z } from "./openapi/registry.js";
+import { toIsoString } from "./lib/datetime.js";
 import { sql, eq, desc } from "drizzle-orm";
 import { alerts, apiTokens, domains, schedulerState } from "./db/schema.js";
 
@@ -308,7 +309,32 @@ export function createApp(options?: { db?: DB }) {
 
   app.get("/api/alerts", (c) => {
     const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 200);
-    return c.json({ alerts: recentAlerts(limit) });
+    // Bug #1 fix: `alerts.created_at` / `sent_at` are SQLite-format
+    // (`YYYY-MM-DD HH:MM:SS` UTC, no `Z`). Rewrite to ISO 8601 so the
+    // dashboard renders the dispatch time correctly regardless of
+    // browser timezone.
+    const rows = recentAlerts(limit).map((r) => ({
+      alert: {
+        id: r.alert.id,
+        level: r.alert.level,
+        source: r.alert.source,
+        status: r.alert.status,
+        domainId: r.alert.domainId,
+        checkId: r.alert.checkId,
+        channel: r.alert.channel,
+        error: r.alert.error,
+        createdAt: toIsoString(r.alert.createdAt),
+        sentAt: toIsoString(r.alert.sentAt),
+      },
+      domain: r.domain
+        ? {
+            id: r.domain.id,
+            hostname: r.domain.hostname,
+            port: r.domain.port,
+          }
+        : null,
+    }));
+    return c.json({ alerts: rows });
   });
   openApiRegistry.registerPath({
     method: "get",
