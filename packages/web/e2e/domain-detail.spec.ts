@@ -85,7 +85,16 @@ test.describe("Domain detail", () => {
     // Auto-accept the native confirm() dialog.
     page.on("dialog", (d) => d.accept());
 
-    await page.getByRole("button", { name: /^delete$/i }).click();
+    // The detail page's Delete button has visible text "Delete" plus an
+    // icon; the table row delete buttons on the dashboard are icon-only
+    // (accessible name comes from the title attribute, no text content).
+    // `hasText: "Delete"` matches only buttons that actually render the
+    // word, so this picks the detail-page action — not any stale table
+    // row from the previous route.
+    await page
+      .getByRole("button", { name: /^delete$/i })
+      .filter({ hasText: "Delete" })
+      .click();
 
     await expect(page).toHaveURL(/\/$/);
     // And it's gone from the api.
