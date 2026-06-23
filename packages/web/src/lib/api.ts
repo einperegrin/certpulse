@@ -132,20 +132,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     const status = res.status;
     let message: string;
-    // Sanitize non-JSON error bodies — a 502 from nginx returns HTML
-    // and dumping that into Error.message makes the UI unusable.
-    const ct = res.headers.get("content-type") ?? "";
-    if (ct.includes("application/json")) {
+    // Read the body once as text — never try both `res.json()` and
+    // `res.text()`, that throws "body stream already read" because
+    // the underlying ReadableStream can only be consumed once. We then
+    // attempt to JSON.parse the text; if the server returned HTML
+    // (e.g. an nginx 502 page) the parse fails and we fall back to a
+    // clean human message.
+    const raw = await res.text();
+    let parsed: { error?: unknown } | null = null;
+    if (raw) {
       try {
-        const body = (await res.json()) as { error?: unknown };
-        message =
-          typeof body?.error === "string" ? body.error : `Request failed: ${status}`;
+        parsed = JSON.parse(raw) as { error?: unknown };
       } catch {
-        message = `Request failed: ${status}`;
+        parsed = null;
       }
+    }
+    if (parsed && typeof parsed === "object" && typeof parsed.error === "string") {
+      message = parsed.error;
+    } else if (status === 401) {
+      message = "Unauthorized — check your API token";
+    } else if (status === 502 || status === 503 || status === 504) {
+      message = `Server unavailable (${status}). Is the API container running?`;
     } else {
-      message = status === 401
-        ? "Unauthorized — check your API token"
+      // Truncate HTML / giant bodies so the UI message stays readable.
+      const snippet = raw ? raw.slice(0, 120).replace(/\s+/g, " ").trim() : "";
+      message = snippet
+        ? `Request failed: ${status} — ${snippet}`
         : `Request failed: ${status}`;
     }
     throw new ApiError(status, message);

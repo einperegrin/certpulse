@@ -99,8 +99,36 @@ shutdown_api() {
     if kill -0 "${API_PID}" 2>/dev/null; then
         kill -KILL "${API_PID}" 2>/dev/null || true
     fi
+    # Stop the watcher if it's still running so it doesn't race with
+    # nginx's shutdown and report a spurious "api exited unexpectedly".
+    if [ -n "${WATCHER_PID:-}" ] && kill -0 "${WATCHER_PID}" 2>/dev/null; then
+        kill "${WATCHER_PID}" 2>/dev/null || true
+    fi
 }
 trap shutdown_api TERM INT
+
+# ---------------------------------------------------------------------------
+# 4b. Watch the api process while nginx runs.
+#     If the api dies unexpectedly (uncaught exception, OOM, etc.), the
+#     container should NOT keep serving requests that will always 502.
+#     When the api is dead, log the failure and exit non-zero — compose's
+#     `restart: unless-stopped` (and `docker run --restart=on-failure`)
+#     then bring the whole stack back up. (v0.5 / Bug 1 — the api was
+#     observed stuck in "Exited (0)" while the web kept returning 502.)
+# ---------------------------------------------------------------------------
+watch_api() {
+    while kill -0 "${API_PID}" 2>/dev/null; do
+        sleep 2
+    done
+    echo "[start.sh] api process ${API_PID} exited unexpectedly; log tail:" >&2
+    tail -n 50 "${API_LOG}" >&2 || true
+    # Trigger the same shutdown path so the api is fully cleaned up and
+    # then propagate the failure to the container orchestrator.
+    shutdown_api || true
+    exit 1
+}
+watch_api &
+WATCHER_PID=$!
 
 # ---------------------------------------------------------------------------
 # 5. Start nginx in the foreground.
