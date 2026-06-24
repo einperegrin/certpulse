@@ -4,6 +4,7 @@ import { type DB, getDb } from "../db/index.js";
 import { checks } from "../db/schema.js";
 import { openApiRegistry } from "../openapi/registry.js";
 import { z } from "zod";
+import { toIsoString } from "../lib/datetime.js";
 
 export function createChecksRouter(db: DB = getDb()): Hono {
   const app = new Hono();
@@ -36,6 +37,32 @@ export function createChecksRouter(db: DB = getDb()): Hono {
     },
   });
 
+  // v0.5 timezone fix: SQLite datetimes are stored as
+  // `YYYY-MM-DD HH:MM:SS` UTC (no `Z`). Rewrite every datetime-shaped
+  // leaf on the way out so the frontend gets proper ISO 8601
+  // (otherwise `new Date("…")` parses them as local time in a UTC+2
+  // browser and "Last Check" reads "2h ago" the moment a row is
+  // inserted). `notBefore` / `notAfter` are already ISO —
+  // `toIsoString` passes them through unchanged.
+  const serialize = (c: typeof checks.$inferSelect) => ({
+    id: c.id,
+    domainId: c.domainId,
+    valid: c.valid,
+    issuer: c.issuer,
+    issuerOrg: c.issuerOrg,
+    serial: c.serial,
+    notBefore: toIsoString(c.notBefore),
+    notAfter: toIsoString(c.notAfter),
+    daysRemaining: c.daysRemaining,
+    error: c.error,
+    rawPem: c.rawPem,
+    checkedAt: toIsoString(c.checkedAt),
+    domainExpiresAt: toIsoString(c.domainExpiresAt),
+    domainExpiresDaysRemaining: c.domainExpiresDaysRemaining,
+    domainRegistrar: c.domainRegistrar,
+    domainRegistrarError: c.domainRegistrarError,
+  });
+
   app.get("/", (c) => {
     const domainIdParam = c.req.query("domain_id");
     const limit = Math.min(parseInt(c.req.query("limit") ?? "50", 10) || 50, 500);
@@ -49,7 +76,7 @@ export function createChecksRouter(db: DB = getDb()): Hono {
         .orderBy(desc(checks.checkedAt))
         .limit(limit)
         .all();
-      return c.json({ checks: rows });
+      return c.json({ checks: rows.map(serialize) });
     }
     const rows = db
       .select()
@@ -57,7 +84,7 @@ export function createChecksRouter(db: DB = getDb()): Hono {
       .orderBy(desc(checks.checkedAt))
       .limit(limit)
       .all();
-    return c.json({ checks: rows });
+    return c.json({ checks: rows.map(serialize) });
   });
 
   return app;

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { RefreshCw, Trash2, Loader2, Globe } from "lucide-react";
+import { RefreshCw, Trash2, Loader2, Globe, AlertCircle } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -13,6 +13,8 @@ import { StatusBadge } from "./StatusBadge";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type DomainRow } from "../lib/api";
 import { formatDistanceToNowStrict } from "../lib/format";
+import { certErrorTitle } from "../lib/cert-errors";
+import { humanizeCertError } from "../lib/cert-errors";
 
 export function DomainTable({ rows }: { rows: DomainRow[] }) {
   const navigate = useNavigate();
@@ -92,6 +94,21 @@ export function DomainTable({ rows }: { rows: DomainRow[] }) {
               </TableCell>
               <TableCell>
                 <StatusBadge daysRemaining={days} />
+                {/* Bug #2 fix (2026-06-23): when the check errored
+                    (revoked / self-signed / untrusted / unreachable)
+                    the StatusBadge above may say "Healthy" because
+                    `daysRemaining` is null. Surface the human-readable
+                    error inline so operators see the problem at a
+                    glance, not just a missing number. */}
+                {lastCheck?.valid === false && lastCheck.error && (
+                  <span
+                    title={certErrorTitle(lastCheck.error)}
+                    className="ml-1 inline-flex items-center gap-1 text-xs text-rose-600"
+                  >
+                    <AlertCircle className="h-3 w-3" />
+                    {certErrorTitle(lastCheck.error)}
+                  </span>
+                )}
               </TableCell>
               <TableCell className="text-right">
                 <div
