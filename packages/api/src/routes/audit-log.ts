@@ -18,6 +18,7 @@ import { type DB, getDb } from "../db/index.js";
 import { queryAudit, type AuditQuery } from "../services/audit.js";
 import { openApiRegistry } from "../openapi/registry.js";
 import { auditLogRowSchema } from "../openapi/schemas.js";
+import { toIsoString } from "../lib/datetime.js";
 
 export function createAuditLogRouter(db: DB = getDb()): Hono {
   const app = new Hono();
@@ -89,10 +90,14 @@ export function createAuditLogRouter(db: DB = getDb()): Hono {
     if (!Number.isNaN(offset)) q.offset = offset;
 
     const { rows, total } = queryAudit(db, q);
+    // v0.5 timezone fix: `audit_log.timestamp` is stored as SQLite
+    // datetime (`YYYY-MM-DD HH:MM:SS`, no `Z`). Rewrite to ISO 8601
+    // on the way out so the audit log renders "just now" instead of
+    // "2h ago" in a non-UTC browser.
     return c.json({
       rows: rows.map((r) => ({
         id: r.id,
-        timestamp: r.timestamp,
+        timestamp: toIsoString(r.timestamp),
         actorType: r.actorType,
         actorId: r.actorId,
         action: r.action,

@@ -132,6 +132,13 @@ export const dashboardSchema = z
     expired: z.number().int(),
     healthy: z.number().int(),
     unchecked: z.number().int(),
+    // v0.5: a domain whose check ran but failed for reasons OTHER
+    // than `daysRemaining <= 0` (e.g. self-signed, hostname
+    // mismatch, OCSP-revoked). `revoked` is a sub-bucket of `invalid`
+    // — the dashboard UI surfaces it as a specific badge. (Roman's
+    // request: revoked certs must NOT appear as healthy.)
+    invalid: z.number().int().optional(),
+    revoked: z.number().int().optional(),
     domainExpiringSoon: z.number().int(),
     domainExpired: z.number().int(),
     domains: z.array(z.unknown()),

@@ -27,6 +27,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ChannelsEditor } from "../components/ChannelsEditor";
 import { api } from "../lib/api";
 import { formatDate, formatDistanceToNowStrict } from "../lib/format";
+import { certErrorTitle, certErrorDescription } from "../lib/cert-errors";
 
 export function DomainDetail() {
   const { id } = useParams<{ id: string }>();
@@ -172,9 +173,22 @@ export function DomainDetail() {
               }
             />
             {latest?.error && (
-              <p className="mt-2 rounded-md bg-rose-50 p-2 text-xs text-rose-700">
-                {latest.error}
-              </p>
+              // Bug #2 fix (2026-06-23): show the human-readable
+              // title and description for the error code the
+              // checker wrote, instead of the raw `cert_expired`
+              // / `cert_revoked` / `dns_not_found` token. Operators
+              // get actionable context in the same box.
+              <div
+                role="alert"
+                className="mt-2 rounded-md bg-rose-50 p-2 text-xs text-rose-700"
+              >
+                <p className="font-medium">
+                  {certErrorTitle(latest.error)}
+                </p>
+                <p className="mt-0.5 text-rose-600">
+                  {certErrorDescription(latest.error)}
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>

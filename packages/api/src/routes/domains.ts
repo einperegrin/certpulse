@@ -9,6 +9,56 @@ import { recordAudit } from "../services/audit.js";
 import { logger } from "../services/logger.js";
 import { openApiRegistry } from "../openapi/registry.js";
 import { domainWithCheckSchema, errorSchema } from "../openapi/schemas.js";
+import { toIsoString } from "../lib/datetime.js";
+
+/**
+ * Map a raw `domains` Drizzle row into the JSON shape the frontend
+ * receives. SQLite stores datetimes as `YYYY-MM-DD HH:MM:SS` (UTC,
+ * no `Z` suffix); the frontend would otherwise parse that as LOCAL
+ * time and show "Last Check: 2h ago" the moment a row is inserted
+ * (Roman's bug, 2026-06-23). `toIsoString` rewrites the string into
+ * proper ISO 8601 with `Z`. (v0.5 timezone bug fix.)
+ */
+function serializeDomain(
+  d: typeof domains.$inferSelect
+): Record<string, unknown> {
+  return {
+    id: d.id,
+    hostname: d.hostname,
+    port: d.port,
+    enabled: d.enabled,
+    createdAt: toIsoString(d.createdAt),
+    updatedAt: toIsoString(d.updatedAt),
+  };
+}
+
+/**
+ * Same rationale as `serializeDomain`, applied to a `checks` row.
+ * `notBefore` / `notAfter` are already ISO (`checker.ts` writes them
+ * via `toISOString()`); `toIsoString` passes them through.
+ */
+function serializeCheck(
+  c: typeof checks.$inferSelect
+): Record<string, unknown> {
+  return {
+    id: c.id,
+    domainId: c.domainId,
+    valid: c.valid,
+    issuer: c.issuer,
+    issuerOrg: c.issuerOrg,
+    serial: c.serial,
+    notBefore: toIsoString(c.notBefore),
+    notAfter: toIsoString(c.notAfter),
+    daysRemaining: c.daysRemaining,
+    error: c.error,
+    rawPem: c.rawPem,
+    checkedAt: toIsoString(c.checkedAt),
+    domainExpiresAt: toIsoString(c.domainExpiresAt),
+    domainExpiresDaysRemaining: c.domainExpiresDaysRemaining,
+    domainRegistrar: c.domainRegistrar,
+    domainRegistrarError: c.domainRegistrarError,
+  };
+}
 
 const hostnameSchema = z
   .string()
@@ -269,7 +319,33 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
       logger.error({ err, requestId, domainId: domain.id }, "first check failed");
       firstCheck = { error: "check_failed", requestId };
     }
-    return c.json({ domain, firstCheck }, 201);
+    return c.json(
+      {
+        domain: serializeDomain(domain),
+        firstCheck: firstCheck
+          ? {
+              ...firstCheck,
+              notBefore:
+                firstCheck.notBefore === null
+                  ? null
+                  : toIsoString(firstCheck.notBefore as unknown as string),
+              notAfter:
+                firstCheck.notAfter === null
+                  ? null
+                  : toIsoString(firstCheck.notAfter as unknown as string),
+              checkedAt:
+                firstCheck.checkedAt === undefined
+                  ? undefined
+                  : toIsoString(firstCheck.checkedAt as unknown as string),
+              domainExpiresAt:
+                firstCheck.domainExpiresAt === null
+                  ? null
+                  : toIsoString(firstCheck.domainExpiresAt as unknown as string),
+            }
+          : null,
+      },
+      201
+    );
   });
 
   app.get("/", (c) => {
@@ -309,7 +385,30 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
       )
       .orderBy(desc(domains.createdAt))
       .all();
-    return c.json({ domains: rows });
+    // v0.5: rewrite SQLite-format datetimes into ISO 8601 with `Z`
+    // before they leave the API. Without this, the frontend would
+    // show "2h ago" the moment a row is inserted (timezone bug).
+    return c.json({
+      domains: rows.map((r) => ({
+        domain: serializeDomain(r.domain),
+        lastCheck: r.lastCheck
+          ? {
+              id: r.lastCheck.id,
+              valid: r.lastCheck.valid,
+              daysRemaining: r.lastCheck.daysRemaining,
+              notAfter: toIsoString(r.lastCheck.notAfter),
+              issuer: r.lastCheck.issuer,
+              issuerOrg: r.lastCheck.issuerOrg,
+              error: r.lastCheck.error,
+              checkedAt: toIsoString(r.lastCheck.checkedAt),
+              domainExpiresAt: toIsoString(r.lastCheck.domainExpiresAt),
+              domainExpiresDaysRemaining: r.lastCheck.domainExpiresDaysRemaining,
+              domainRegistrar: r.lastCheck.domainRegistrar,
+              domainRegistrarError: r.lastCheck.domainRegistrarError,
+            }
+          : null,
+      })),
+    });
   });
 
   app.get("/:id", (c) => {
@@ -324,7 +423,13 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
       .orderBy(desc(checks.checkedAt))
       .limit(10)
       .all();
-    return c.json({ domain, checks: recent });
+    // v0.5 timezone fix: rewrite SQLite-format datetimes in the
+    // response. The detail view renders "Last Check" right under the
+    // cert metadata, so the same bug would surface here too.
+    return c.json({
+      domain: serializeDomain(domain),
+      checks: recent.map(serializeCheck),
+    });
   });
 
   app.delete("/:id", (c) => {

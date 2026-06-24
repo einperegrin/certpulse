@@ -12,6 +12,7 @@
     "dev:web": "npm run dev --workspace=@certpulse/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace=@certpulse/web",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:generate": "npm run db:generate --workspace=@certpulse/api",
@@ -24,7 +25,6 @@
     "vite": "^6.0.0"
   },
   "dependencies": {
-    "@hono/swagger-ui": "^0.6.1",
-    "@hono/zod-openapi": "^1.4.0"
+    "@hono/swagger-ui": "^0.6.1"
   }
 }
