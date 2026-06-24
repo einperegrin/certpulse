@@ -33,6 +33,9 @@ export interface RunCheckOutcome {
   port: number;
   valid: boolean;
   daysRemaining: number | null;
+  notBefore: string | null;
+  notAfter: string | null;
+  checkedAt: string | null;
   domainExpiresAt: string | null;
   domainExpiresDaysRemaining: number | null;
   domainRegistrar: string | null;
@@ -144,6 +147,9 @@ export async function runCheckForDomain(
     port,
     valid: result.valid,
     daysRemaining: result.daysRemaining,
+    notBefore: result.notBefore ?? null,
+    notAfter: result.notAfter ?? null,
+    checkedAt: new Date().toISOString(),
     domainExpiresAt: whois?.expiresAt ?? null,
     domainExpiresDaysRemaining: whois?.daysRemaining ?? null,
     domainRegistrar: whois?.registrar ?? null,
@@ -223,6 +229,9 @@ export async function runChecksForAllEnabledDomains(
           port: row?.port ?? 443,
           valid: false,
           daysRemaining: null,
+          notBefore: null,
+          notAfter: null,
+          checkedAt: new Date().toISOString(),
           domainExpiresAt: null,
           domainExpiresDaysRemaining: null,
           domainRegistrar: null,
