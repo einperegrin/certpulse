@@ -46,6 +46,7 @@ RUN groupadd --system --gid 10001 certpulse \
 # entrypoint chowns /app/data on every start anyway).
 COPY --from=build --chown=root:root      /app/packages/api/dist                ./dist
 COPY --from=build --chown=root:root      /app/packages/api/package.json        ./packages/api/package.json
+COPY --from=build --chown=root:root      /app/packages/web/package.json        ./packages/web/package.json
 COPY --from=build --chown=root:root      /app/packages/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=build --chown=root:root      /app/package.json                     ./package.json
 COPY --from=build --chown=root:root      /app/package-lock.json                ./package-lock.json
@@ -53,6 +54,8 @@ COPY --from=build --chown=certpulse:certpulse /app/packages/api/src/db/migration
 
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
     && cd /app/packages/api && npm ci --omit=dev --no-audit --no-fund \
+    && mkdir -p /app/node_modules/@hono \
+    && cp -r /app/packages/api/node_modules/@hono/swagger-ui /app/node_modules/@hono/swagger-ui \
     && chown -R root:root /app/node_modules \
     && chmod -R a+rX /app/dist /app/packages /app/package.json /app/package-lock.json /app/node_modules \
     && npm cache clean --force
