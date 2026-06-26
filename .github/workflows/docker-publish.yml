@@ -85,7 +85,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=CertPulse
             org.opencontainers.image.source=https://github.com/einperegrin/certpulse
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=AGPL-3.0
             org.opencontainers.image.documentation=https://github.com/einperegrin/certpulse/blob/main/README.md
 
       - name: Capture manual tag input (workflow_dispatch only)
@@ -151,7 +151,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=CertPulse
             org.opencontainers.image.source=https://github.com/einperegrin/certpulse
-            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.licenses=AGPL-3.0
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.created=${{ steps.version.outputs.iso8601 }}
             org.opencontainers.image.revision=${{ github.sha }}
