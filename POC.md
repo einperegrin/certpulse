@@ -247,7 +247,7 @@ sslert/
 │   └── workflows/
 │       └── ci.yml
 ├── .gitignore
-├── LICENSE                   (MIT)
+├── LICENSE                   (AGPL-3.0)
 └── README.md
 ```
 
