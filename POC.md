@@ -1,4 +1,4 @@
-# CertPulse POC Spec
+# SSLert POC Spec
 
 > **Goal:** Prove the core value prop in 3-5 days — self-hosted SSL expiry monitor that alerts before cert expiration.
 
@@ -189,7 +189,7 @@ Expired (≤ 0)    │  Emergency    │  Email: "CERTIFICATE EXPIRED"
 ### Layout
 ```
 ┌──────────────────────────────────────┐
-│  🔒 CertPulse    [Dashboard]  [+Add]│
+│  🔒 SSLert    [Dashboard]  [+Add]│
 ├──────────────────────────────────────┤
 │                                      │
 │  ┌────────┐ ┌────────┐ ┌────────┐  │
@@ -209,7 +209,7 @@ Expired (≤ 0)    │  Emergency    │  Email: "CERTIFICATE EXPIRED"
 ## Project Structure
 
 ```
-certpulse/
+sslert/
 ├── docker-compose.yml
 ├── package.json              (workspace root)
 ├── packages/
@@ -261,11 +261,11 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - certpulse-data:/app/data
+      - sslert-data:/app/data
     environment:
-      - DATABASE_PATH=/app/data/certpulse.db
+      - DATABASE_PATH=/app/data/sslert.db
       - RESEND_API_KEY=${RESEND_API_KEY}
-      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-certpulse@localhost}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-sslert@localhost}
       - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}  # minutes
       - NODE_ENV=production
@@ -278,7 +278,7 @@ services:
       - VITE_API_URL=http://localhost:3000
 
 volumes:
-  certpulse-data:
+  sslert-data:
 ```
 
 ## Environment Variables
@@ -289,9 +289,9 @@ RESEND_API_KEY=re_xxxx
 ALERT_EMAIL_TO=admin@example.com
 
 # Optional
-ALERT_EMAIL_FROM=certpulse@example.com
+ALERT_EMAIL_FROM=sslert@example.com
 CHECK_INTERVAL=60           # minutes between checks
-DATABASE_PATH=./data/certpulse.db
+DATABASE_PATH=./data/sslert.db
 PORT=3000
 ```
 

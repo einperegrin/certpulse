@@ -1,32 +1,32 @@
 import { expect, type Page, type APIRequestContext } from "@playwright/test";
 
 // E2E helpers. The api + web preview are started by playwright.config.ts
-// → globalSetup, which stashes CERTPULSE_E2E_API / _WEB / _TOKEN in env.
+// → globalSetup, which stashes SSLERT_E2E_API / _WEB / _TOKEN in env.
 export function apiBase(): string {
-  const url = process.env.CERTPULSE_E2E_API;
+  const url = process.env.SSLERT_E2E_API;
   if (!url) {
     throw new Error(
-      "CERTPULSE_E2E_API is not set — Playwright globalSetup did not run"
+      "SSLERT_E2E_API is not set — Playwright globalSetup did not run"
     );
   }
   return url.replace(/\/$/, "");
 }
 
 export function webBase(): string {
-  const url = process.env.CERTPULSE_E2E_WEB;
+  const url = process.env.SSLERT_E2E_WEB;
   if (!url) {
     throw new Error(
-      "CERTPULSE_E2E_WEB is not set — Playwright globalSetup did not run"
+      "SSLERT_E2E_WEB is not set — Playwright globalSetup did not run"
     );
   }
   return url.replace(/\/$/, "");
 }
 
 export function authToken(): string {
-  const t = process.env.CERTPULSE_E2E_TOKEN;
+  const t = process.env.SSLERT_E2E_TOKEN;
   if (!t) {
     throw new Error(
-      "CERTPULSE_E2E_TOKEN is not set — Playwright globalSetup did not run"
+      "SSLERT_E2E_TOKEN is not set — Playwright globalSetup did not run"
     );
   }
   return t;
@@ -38,7 +38,7 @@ export async function loginAs(page: Page): Promise<void> {
   await page.goto(webBase());
   // Key duplicates the one in api.ts; keep both in sync.
   await page.evaluate((t) => {
-    localStorage.setItem("certpulse.token", t);
+    localStorage.setItem("sslert.token", t);
   }, authToken());
   await page.goto(webBase() + "/");
 }

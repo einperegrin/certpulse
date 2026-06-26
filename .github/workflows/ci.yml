@@ -44,10 +44,10 @@ jobs:
         run: docker compose config -q
 
       - name: Build api image
-        run: docker build -t certpulse-api:test -f packages/api/Dockerfile .
+        run: docker build -t sslert-api:test -f packages/api/Dockerfile .
 
       - name: Build web image
-        run: docker build -t certpulse-web:test -f packages/web/Dockerfile .
+        run: docker build -t sslert-web:test -f packages/web/Dockerfile .
 
   security:
     runs-on: ubuntu-latest

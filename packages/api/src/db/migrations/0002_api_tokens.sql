@@ -1,4 +1,4 @@
--- CertPulse v0.2: API tokens for bearer-token auth (closes C-1 prerequisite).
+-- SSLert v0.2: API tokens for bearer-token auth (closes C-1 prerequisite).
 -- Tokens are stored as SHA-256 hashes; the raw token is shown only at creation time.
 
 CREATE TABLE IF NOT EXISTS api_tokens (

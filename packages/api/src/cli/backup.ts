@@ -1,5 +1,5 @@
 /**
- * Backup & restore CLI for CertPulse (v0.4 / M-7).
+ * Backup & restore CLI for SSLert (v0.4 / M-7).
  *
  * Usage:
  *   tsx src/cli/backup.ts create [output-path] [--db-path <p>] [--env-path <p>]
@@ -7,7 +7,7 @@
  *
  * A backup is a single tar.gz containing:
  *   manifest.json             {"version","createdAt","hostname","checks","domains","alerts"}
- *   data/certpulse.db         the SQLite file (snapshot via the .backup API)
+ *   data/sslert.db         the SQLite file (snapshot via the .backup API)
  *   .env.redacted             copy of .env with secrets replaced by "<redacted>"
  *   README.md                 one-liner restore instructions
  *
@@ -49,7 +49,7 @@ function hasFlag(name: string): boolean {
 }
 
 function defaultDbPath(): string {
-  return process.env.DB_PATH ?? "/app/data/certpulse.db";
+  return process.env.DB_PATH ?? "/app/data/sslert.db";
 }
 
 function defaultEnvPath(): string {
@@ -70,7 +70,7 @@ function defaultBackupFilename(): string {
     pad(d.getHours()) +
     pad(d.getMinutes()) +
     pad(d.getSeconds());
-  return `certpulse-backup-${ts}.tar.gz`;
+  return `sslert-backup-${ts}.tar.gz`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -247,7 +247,7 @@ export async function createBackup(opts: CreateOptions = {}): Promise<string> {
     throw new Error(`Database file not found at ${dbPath}`);
   }
 
-  const stagingDir = mkdtempSync(join(tmpdir(), "certpulse-backup-"));
+  const stagingDir = mkdtempSync(join(tmpdir(), "sslert-backup-"));
   mkdirSync(join(stagingDir, "data"), { recursive: true });
 
   // 1. Snapshot the SQLite DB. The .backup API is the only safe way
@@ -257,9 +257,9 @@ export async function createBackup(opts: CreateOptions = {}): Promise<string> {
   //    internally.
   const raw = getRawSqlite();
   if (raw && typeof raw.backup === "function") {
-    console.log(`[backup] snapshotting ${dbPath} -> ${join(stagingDir, "data", "certpulse.db")}`);
+    console.log(`[backup] snapshotting ${dbPath} -> ${join(stagingDir, "data", "sslert.db")}`);
     await new Promise<void>((res, rej) => {
-      raw.backup(join(stagingDir, "data", "certpulse.db"))
+      raw.backup(join(stagingDir, "data", "sslert.db"))
         .then(() => res())
         .catch((err: unknown) => rej(err));
     });
@@ -268,7 +268,7 @@ export async function createBackup(opts: CreateOptions = {}): Promise<string> {
     // directly — copy the file. The CLI is not the hot path; consistency
     // is best-effort here.
     console.warn("[backup] .backup() not available; falling back to cp");
-    copyFileSync(dbPath, join(stagingDir, "data", "certpulse.db"));
+    copyFileSync(dbPath, join(stagingDir, "data", "sslert.db"));
   }
 
   // 2. Build the manifest.
@@ -294,19 +294,19 @@ export async function createBackup(opts: CreateOptions = {}): Promise<string> {
   writeFileSync(
     join(stagingDir, "README.md"),
     [
-      "# CertPulse backup",
+      "# SSLert backup",
       "",
       `Created: ${manifest.createdAt} on ${manifest.hostname}`,
       `Version: ${manifest.version}`,
       "",
       "## Restore",
       "",
-      "    certpulse backup restore " +
+      "    sslert backup restore " +
         outputPath.split("/").pop() +
         " --yes",
       "",
       "The restore command backs up the current DB to",
-      "`certpulse.db.pre-restore` before overwriting it.",
+      "`sslert.db.pre-restore` before overwriting it.",
       "",
     ].join("\n")
   );
@@ -362,13 +362,13 @@ export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult
     throw new Error(`Archive not found at ${archivePath}`);
   }
 
-  const extractDir = mkdtempSync(join(tmpdir(), "certpulse-restore-"));
+  const extractDir = mkdtempSync(join(tmpdir(), "sslert-restore-"));
   await tarExtract(archivePath, extractDir);
 
   const manifestPath = join(extractDir, "manifest.json");
   if (!existsSync(manifestPath)) {
     rmSync(extractDir, { recursive: true, force: true });
-    throw new Error("Archive is missing manifest.json — not a valid CertPulse backup");
+    throw new Error("Archive is missing manifest.json — not a valid SSLert backup");
   }
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as BackupManifest;
 
@@ -415,10 +415,10 @@ export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult
   if (targetDir && !existsSync(targetDir)) {
     mkdirSync(targetDir, { recursive: true });
   }
-  const srcDb = join(extractDir, "data", "certpulse.db");
+  const srcDb = join(extractDir, "data", "sslert.db");
   if (!existsSync(srcDb)) {
     rmSync(extractDir, { recursive: true, force: true });
-    throw new Error("Archive is missing data/certpulse.db");
+    throw new Error("Archive is missing data/sslert.db");
   }
   console.log(`[restore] installing ${srcDb} -> ${dbPath}`);
   copyFileSync(srcDb, dbPath);

@@ -1,14 +1,14 @@
 /**
  * Smoke test for the Grafana dashboard JSON shipped at
- * `packages/api/grafana/certpulse-dashboard.json`.
+ * `packages/api/grafana/sslert-dashboard.json`.
  *
  * The dashboard is hand-authored (see commit message for #15) — no
  * code generation, no UI. This test guards against:
  *
  *   1. The JSON being malformed (can't be imported into Grafana)
- *   2. The `title` being something other than "CertPulse" (so a
+ *   2. The `title` being something other than "SSLert" (so a
  *      renamed dashboard doesn't break the README's "import the
- *      CertPulse dashboard" link)
+ *      SSLert dashboard" link)
  *   3. A panel silently disappearing (the spec asks for 8 panels in a
  *      2x4 grid; regressions here are immediately visible)
  *   4. Any panel title changing (so a renamed panel doesn't surprise
@@ -26,7 +26,7 @@ const DASHBOARD_PATH = join(
   __dirname,
   "..",
   "grafana",
-  "certpulse-dashboard.json",
+  "sslert-dashboard.json",
 );
 
 type Dashboard = {
@@ -39,7 +39,7 @@ describe("Grafana dashboard JSON", () => {
   const json: Dashboard = JSON.parse(readFileSync(DASHBOARD_PATH, "utf8"));
 
   it("parses as valid JSON and has the expected top-level title", () => {
-    expect(json.title).toBe("CertPulse");
+    expect(json.title).toBe("SSLert");
   });
 
   it("uses schemaVersion 38 (Grafana 10+)", () => {
@@ -73,14 +73,14 @@ describe("Grafana dashboard JSON", () => {
     // If you add a new metric and reference it in a panel, the test
     // tells you to add it to this set.
     const knownMetrics = [
-      "certpulse_http_request_duration_seconds_bucket",
-      "certpulse_checks_total",
-      "certpulse_alerts_sent_total",
-      "certpulse_rate_limit_hits_total",
-      "certpulse_http_requests_total",
-      "certpulse_last_check_timestamp_seconds",
-      "certpulse_last_alert_timestamp_seconds",
-      "certpulse_audit_log_writes_total",
+      "sslert_http_request_duration_seconds_bucket",
+      "sslert_checks_total",
+      "sslert_alerts_sent_total",
+      "sslert_rate_limit_hits_total",
+      "sslert_http_requests_total",
+      "sslert_last_check_timestamp_seconds",
+      "sslert_last_alert_timestamp_seconds",
+      "sslert_audit_log_writes_total",
     ];
     for (const panel of json.panels) {
       const exprs = panel.targets.map((t) => t.expr);
@@ -92,7 +92,7 @@ describe("Grafana dashboard JSON", () => {
         const matches = knownMetrics.filter((m) => expr.includes(m));
         expect(matches, `panel "${panel.title}" expr "${expr}"`).toHaveLength(
           // Most panels match 1+ metric. `topk(10, sum by (path) ...)`
-          // matches `certpulse_http_requests_total`. `time() - foo`
+          // matches `sslert_http_requests_total`. `time() - foo`
           // matches the timestamp gauges. So `>= 1` is the right floor.
           1,
         );

@@ -10,11 +10,11 @@ services:
     expose:
       - "3000"
     volumes:
-      - certpulse-data:/app/data
+      - sslert-data:/app/data
     environment:
-      - DATABASE_PATH=/app/data/certpulse.db
+      - DATABASE_PATH=/app/data/sslert.db
       - RESEND_API_KEY=${RESEND_API_KEY:-}
-      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-certpulse@localhost}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-sslert@localhost}
       - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-}
       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
       - PORT=3000
@@ -92,4 +92,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  certpulse-data:
+  sslert-data:

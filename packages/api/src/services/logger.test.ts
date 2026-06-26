@@ -3,7 +3,7 @@ import { Writable } from "node:stream";
 import pino from "pino";
 
 describe("logger (L-6)", () => {
-  it("emits valid JSON with the certpulse-api base field", () => {
+  it("emits valid JSON with the sslert-api base field", () => {
     // Capture the logger's stdout by writing our own stream under
     // a child with the same options as the production logger.
     const lines: string[] = [];
@@ -13,11 +13,11 @@ describe("logger (L-6)", () => {
         cb();
       },
     });
-    const testLogger = pino({ level: "info", base: { app: "certpulse-api" } }, sink);
+    const testLogger = pino({ level: "info", base: { app: "sslert-api" } }, sink);
     testLogger.info("hello");
     expect(lines).toHaveLength(1);
     const obj = JSON.parse(lines[0]!);
-    expect(obj.app).toBe("certpulse-api");
+    expect(obj.app).toBe("sslert-api");
     expect(obj.msg).toBe("hello");
     expect(typeof obj.time).toBe("number");
   });
@@ -40,7 +40,7 @@ describe("logger (L-6)", () => {
     // so the test is deterministic and doesn't depend on the
     // surrounding shell's env.
     const testLogger = pino(
-      { level: "error", base: { app: "certpulse-api" } },
+      { level: "error", base: { app: "sslert-api" } },
       sink
     );
     testLogger.info("should not appear");

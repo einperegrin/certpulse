@@ -89,7 +89,7 @@ export function runRetention(
 
   // Audit log retention (v0.3). Default 90 days, configurable via
   // AUDIT_LOG_RETENTION_DAYS. Kept as a separate prune call so the
-  // CLI (`certpulse audit prune --days N`) can also drive it.
+  // CLI (`sslert audit prune --days N`) can also drive it.
   const deletedAudit = pruneAuditLog(db, auditDays);
 
   // VACUUM to reclaim space. Has to run outside a transaction.

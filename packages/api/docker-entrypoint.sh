@@ -1,5 +1,5 @@
 #!/bin/sh
-# CertPulse api entrypoint.
+# SSLert api entrypoint.
 #
 # The api image runs as a dedicated unprivileged user (UID/GID 10001),
 # but /app/data is a named volume that may be owned by root — either
@@ -32,7 +32,7 @@ chown -R 10001:10001 "${DATA_DIR}"
 # Drop to the unprivileged user. setpriv is in util-linux, shipped by
 # default in the node bookworm-slim base image, and unlike gosu/su-exec
 # it does not need a separate package install. --init-groups pulls any
-# supplementary groups for UID 10001 (certpulse has only the primary
+# supplementary groups for UID 10001 (sslert has only the primary
 # group, so this is just defensive). The compose file grants
 # CAP_SETUID + CAP_SETGID for this single setresuid() call; with
 # no-new-privileges:true those caps are not inherited by any child.

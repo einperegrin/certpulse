@@ -1,4 +1,4 @@
-/* CertPulse landing — copy-to-clipboard for hero CTA + step blocks */
+/* SSLert landing — copy-to-clipboard for hero CTA + step blocks */
 (function () {
   'use strict';
 

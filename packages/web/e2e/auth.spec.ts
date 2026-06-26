@@ -8,7 +8,7 @@ test.describe("Authentication (Bug 2 fix)", () => {
     await page.goto(webBase() + "/");
     await expect(page).toHaveURL(/\/login$/);
     await expect(
-      page.getByRole("heading", { name: /sign in to certpulse/i })
+      page.getByRole("heading", { name: /sign in to sslert/i })
     ).toBeVisible();
   });
 
@@ -29,7 +29,7 @@ test.describe("Authentication (Bug 2 fix)", () => {
     // Token must NOT have been persisted — the user should be able to
     // try again without first clearing devtools.
     const stored = await page.evaluate(() =>
-      window.localStorage.getItem("certpulse.token")
+      window.localStorage.getItem("sslert.token")
     );
     expect(stored).toBeNull();
   });
@@ -47,7 +47,7 @@ test.describe("Authentication (Bug 2 fix)", () => {
     ).toBeVisible();
     // Token must now be in localStorage.
     const stored = await page.evaluate(() =>
-      window.localStorage.getItem("certpulse.token")
+      window.localStorage.getItem("sslert.token")
     );
     expect(stored).toBe(authToken());
   });
@@ -70,7 +70,7 @@ test.describe("Authentication (Bug 2 fix)", () => {
     // test on the sign-out path.
     await page.goto(webBase());
     await page.evaluate((t) => {
-      localStorage.setItem("certpulse.token", t);
+      localStorage.setItem("sslert.token", t);
     }, authToken());
     await page.goto(webBase() + "/");
     await expect(
@@ -79,7 +79,7 @@ test.describe("Authentication (Bug 2 fix)", () => {
     await page.getByTestId("signout-button").click();
     await expect(page).toHaveURL(/\/login$/);
     const stored = await page.evaluate(() =>
-      window.localStorage.getItem("certpulse.token")
+      window.localStorage.getItem("sslert.token")
     );
     expect(stored).toBeNull();
   });

@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "CertPulse — self-hosted SSL/TLS certificate and domain expiry monitor. Reads the prom-client /metrics endpoint. See packages/api/grafana/certpulse-dashboard.json in the repo, and the 'Monitoring with Grafana' section of the README for import instructions.",
+  "description": "SSLert — self-hosted SSL/TLS certificate and domain expiry monitor. Reads the prom-client /metrics endpoint. See packages/api/grafana/sslert-dashboard.json in the repo, and the 'Monitoring with Grafana' section of the README for import instructions.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -22,7 +22,7 @@
   "panels": [
     {
       "datasource": "${DS_PROMETHEUS}",
-      "description": "Per-endpoint latency from certpulse_http_request_duration_seconds. p50 / p95 / p99 over 5m. Use this to spot a slow route before it pages the user.",
+      "description": "Per-endpoint latency from sslert_http_request_duration_seconds. p50 / p95 / p99 over 5m. Use this to spot a slow route before it pages the user.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -65,7 +65,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum(rate(certpulse_http_request_duration_seconds_bucket{job=\"certpulse\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(sslert_http_request_duration_seconds_bucket{job=\"sslert\"}[5m])) by (le))",
           "legendFormat": "p50",
           "range": true,
           "refId": "A"
@@ -73,7 +73,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(certpulse_http_request_duration_seconds_bucket{job=\"certpulse\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(sslert_http_request_duration_seconds_bucket{job=\"sslert\"}[5m])) by (le))",
           "legendFormat": "p95",
           "range": true,
           "refId": "B"
@@ -81,7 +81,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(certpulse_http_request_duration_seconds_bucket{job=\"certpulse\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(sslert_http_request_duration_seconds_bucket{job=\"sslert\"}[5m])) by (le))",
           "legendFormat": "p99",
           "range": true,
           "refId": "C"
@@ -92,7 +92,7 @@
     },
     {
       "datasource": "${DS_PROMETHEUS}",
-      "description": "SSL/TLS check throughput. Number of certpulse_checks_total per second averaged over 5m. Should match the configured CHECK_INTERVAL (default 60m = 1/h per domain).",
+      "description": "SSL/TLS check throughput. Number of sslert_checks_total per second averaged over 5m. Should match the configured CHECK_INTERVAL (default 60m = 1/h per domain).",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -132,7 +132,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "sum(rate(certpulse_checks_total[5m]))",
+          "expr": "sum(rate(sslert_checks_total[5m]))",
           "legendFormat": "checks/s",
           "range": true,
           "refId": "A"
@@ -143,7 +143,7 @@
     },
     {
       "datasource": "${DS_PROMETHEUS}",
-      "description": "certpulse_alerts_sent_total broken down by channel (email, webhook, telegram, slack, ntfy, log). Stacked. The expected shape is a flat line that spikes when a cert approaches expiry.",
+      "description": "sslert_alerts_sent_total broken down by channel (email, webhook, telegram, slack, ntfy, log). Stacked. The expected shape is a flat line that spikes when a cert approaches expiry.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -183,7 +183,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "sum by (channel) (rate(certpulse_alerts_sent_total[5m]))",
+          "expr": "sum by (channel) (rate(sslert_alerts_sent_total[5m]))",
           "legendFormat": "{{channel}}",
           "range": true,
           "refId": "A"
@@ -194,7 +194,7 @@
     },
     {
       "datasource": "${DS_PROMETHEUS}",
-      "description": "certpulse_rate_limit_hits_total — 429s emitted by the in-memory rate limiter on /api/*. A small amount is normal (CI, dashboard polling); a large sustained value means a noisy client.",
+      "description": "sslert_rate_limit_hits_total — 429s emitted by the in-memory rate limiter on /api/*. A small amount is normal (CI, dashboard polling); a large sustained value means a noisy client.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -240,7 +240,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "sum(rate(certpulse_rate_limit_hits_total[5m]))",
+          "expr": "sum(rate(sslert_rate_limit_hits_total[5m]))",
           "legendFormat": "rate-limit hits/s",
           "range": true,
           "refId": "A"
@@ -251,7 +251,7 @@
     },
     {
       "datasource": "${DS_PROMETHEUS}",
-      "description": "certpulse_http_requests_total broken down by response status. Useful for spotting 401 spikes (token leak?) or 5xx (an alert path is broken).",
+      "description": "sslert_http_requests_total broken down by response status. Useful for spotting 401 spikes (token leak?) or 5xx (an alert path is broken).",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -291,7 +291,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "sum by (status) (rate(certpulse_http_requests_total[5m]))",
+          "expr": "sum by (status) (rate(sslert_http_requests_total[5m]))",
           "legendFormat": "{{status}}",
           "range": true,
           "refId": "A"
@@ -302,7 +302,7 @@
     },
     {
       "datasource": "${DS_PROMETHEUS}",
-      "description": "Seconds since the last scheduler tick (certpulse_last_check_timestamp_seconds). 0 = never ticked; 3600s = 1h since last check. Should track your CHECK_INTERVAL × 2. Red over 3600 means the scheduler is stuck.",
+      "description": "Seconds since the last scheduler tick (sslert_last_check_timestamp_seconds). 0 = never ticked; 3600s = 1h since last check. Should track your CHECK_INTERVAL × 2. Red over 3600 means the scheduler is stuck.",
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
@@ -335,7 +335,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "time() - certpulse_last_check_timestamp_seconds",
+          "expr": "time() - sslert_last_check_timestamp_seconds",
           "legendFormat": "last check age",
           "range": true,
           "refId": "A"
@@ -377,7 +377,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "time() - certpulse_last_alert_timestamp_seconds",
+          "expr": "time() - sslert_last_alert_timestamp_seconds",
           "legendFormat": "last alert age",
           "range": true,
           "refId": "A"
@@ -425,7 +425,7 @@
         {
           "datasource": "${DS_PROMETHEUS}",
           "editorMode": "code",
-          "expr": "topk(10, sum by (path) (rate(certpulse_http_requests_total{status=~\"5..\"}[5m])))",
+          "expr": "topk(10, sum by (path) (rate(sslert_http_requests_total{status=~\"5..\"}[5m])))",
           "format": "table",
           "instant": true,
           "legendFormat": "{{path}}",
@@ -438,7 +438,7 @@
   ],
   "refresh": "30s",
   "schemaVersion": 38,
-  "tags": ["certpulse", "ssl", "monitoring", "self-hosted"],
+  "tags": ["sslert", "ssl", "monitoring", "self-hosted"],
   "templating": {
     "list": [
       {
@@ -461,8 +461,8 @@
   "time": {"from": "now-6h", "to": "now"},
   "timepicker": {},
   "timezone": "",
-  "title": "CertPulse",
-  "uid": "certpulse-overview",
+  "title": "SSLert",
+  "uid": "sslert-overview",
   "version": 1,
   "weekStart": ""
 }

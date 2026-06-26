@@ -26,7 +26,7 @@
     <circle cx="40" cy="40" r="40" fill="#10b981"/>
     <path d="M22 41l13 13 22-26" fill="none" stroke="#0a0a0f" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <text x="180" y="115" fill="#e7e9f1" font-family="Inter, system-ui, sans-serif" font-size="38" font-weight="700" letter-spacing="-0.5">CertPulse</text>
+  <text x="180" y="115" fill="#e7e9f1" font-family="Inter, system-ui, sans-serif" font-size="38" font-weight="700" letter-spacing="-0.5">SSLert</text>
   <text x="180" y="155" fill="#6b7090" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="500">Open-core · Self-hosted · AGPL v3</text>
 
   <!-- Headline -->
@@ -41,7 +41,7 @@
     <rect x="0" y="0" rx="14" ry="14" width="600" height="76" fill="#14151f" stroke="#232636" stroke-width="1.5"/>
     <text x="22" y="32" fill="#6b7090" font-family="JetBrains Mono, ui-monospace, monospace" font-size="16">$</text>
     <text x="48" y="32" fill="#e7e9f1" font-family="JetBrains Mono, ui-monospace, monospace" font-size="20" font-weight="500">docker compose up --build</text>
-    <text x="22" y="60" fill="#10b981" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14">★ github.com/einperegrin/certpulse</text>
+    <text x="22" y="60" fill="#10b981" font-family="JetBrains Mono, ui-monospace, monospace" font-size="14">★ github.com/einperegrin/sslert</text>
   </g>
 
   <!-- Stats column -->

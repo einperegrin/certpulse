@@ -87,7 +87,7 @@ describe("alert dispatch (multi-channel + dedup)", () => {
       ntfy: null,
     };
     process.env.ALERT_EMAIL_TO = "test@example.com";
-    process.env.ALERT_EMAIL_FROM = "certpulse@example.com";
+    process.env.ALERT_EMAIL_FROM = "sslert@example.com";
 
     // Replace every channel sender with a recording fake. This way the
     // tests exercise the real dispatch path (no short-circuits on missing
@@ -250,7 +250,7 @@ describe("alert dispatch (multi-channel + dedup)", () => {
         domainId: domain.id,
         channel: "ntfy",
         enabled: true,
-        config: JSON.stringify({ topic: "certpulse-test" }),
+        config: JSON.stringify({ topic: "sslert-test" }),
       })
       .run();
 

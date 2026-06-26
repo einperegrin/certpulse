@@ -1,6 +1,6 @@
 #!/bin/sh
 # docker/start.sh — PID-1 entrypoint for the combined release image
-# (ghcr.io/einperegrin/certpulse).
+# (ghcr.io/einperegrin/sslert).
 #
 # This script is what `tini -- /usr/local/bin/start.sh` execs after
 # tini takes over as PID 1. Its job is to get TWO long-lived processes

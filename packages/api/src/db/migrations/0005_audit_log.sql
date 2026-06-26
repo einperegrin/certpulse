@@ -1,4 +1,4 @@
--- CertPulse v0.3: audit log table.
+-- SSLert v0.3: audit log table.
 --
 -- Records who did what to which resource, used by the new /api/audit-log
 -- endpoint and the /audit web UI page. Retention is enforced by
