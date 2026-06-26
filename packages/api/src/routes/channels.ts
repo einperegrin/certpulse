@@ -17,9 +17,9 @@ const channelNameSchema = z.enum(["email", "webhook", "telegram", "slack", "ntfy
 // `secret` is an optional HMAC-SHA256 signing secret for the generic
 // webhook channel. When set, the sender computes
 // `HMAC-SHA256(secret, rawBody)` and adds the
-// `X-CertPulse-Signature: sha256=<hex>` + `X-CertPulse-Timestamp`
+// `X-SSLert-Signature: sha256=<hex>` + `X-SSLert-Timestamp`
 // headers so the receiver can verify the alert came from this
-// CertPulse instance. Min length 16, max 256.
+// SSLert instance. Min length 16, max 256.
 const channelConfigSchema = z
   .object({
     url: z.string().url().optional(),
@@ -293,7 +293,7 @@ export function createChannelsRouter(db: DB = getDb()): Hono<Env> {
         enabled: true,
         config: {
           to: process.env.ALERT_EMAIL_TO,
-          from: process.env.ALERT_EMAIL_FROM ?? "certpulse@localhost",
+          from: process.env.ALERT_EMAIL_FROM ?? "sslert@localhost",
         },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

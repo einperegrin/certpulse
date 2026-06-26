@@ -70,7 +70,7 @@ import { createBackup, restoreBackup, redactEnv } from "./backup.js";
 let workDir: string;
 
 beforeEach(() => {
-  workDir = mkdtempSync(join(tmpdir(), "certpulse-bkp-test-"));
+  workDir = mkdtempSync(join(tmpdir(), "sslert-bkp-test-"));
 });
 
 afterEach(() => {
@@ -113,7 +113,7 @@ describe("redactEnv", () => {
 
 describe("createBackup", () => {
   it("writes a tarball containing manifest + db + redacted env", async () => {
-    const dbPath = join(workDir, "certpulse.db");
+    const dbPath = join(workDir, "sslert.db");
     writeFileSync(dbPath, "fake-db-bytes"); // overwritten by mock .backup() in our setup
     const envPath = join(workDir, ".env");
     writeFileSync(
@@ -134,7 +134,7 @@ describe("createBackup", () => {
     expect(sz).toBeGreaterThan(50);
 
     // Extract and verify the manifest is valid JSON.
-    const extractDir = mkdtempSync(join(tmpdir(), "certpulse-bkp-verify-"));
+    const extractDir = mkdtempSync(join(tmpdir(), "sslert-bkp-verify-"));
     const { spawnSync } = await import("node:child_process");
     const r = spawnSync("tar", ["-xzf", out, "-C", extractDir]);
     expect(r.status).toBe(0);
@@ -151,7 +151,7 @@ describe("createBackup", () => {
   });
 
   it("redacts env vars matching _KEY/_SECRET/_TOKEN/_PASSWORD", async () => {
-    const dbPath = join(workDir, "certpulse.db");
+    const dbPath = join(workDir, "sslert.db");
     writeFileSync(dbPath, "fake");
     const envPath = join(workDir, ".env");
     writeFileSync(
@@ -163,7 +163,7 @@ describe("createBackup", () => {
       dbPath,
       envPath,
     });
-    const extractDir = mkdtempSync(join(tmpdir(), "certpulse-bkp-verify-"));
+    const extractDir = mkdtempSync(join(tmpdir(), "sslert-bkp-verify-"));
     const { spawnSync } = await import("node:child_process");
     spawnSync("tar", ["-xzf", out, "-C", extractDir]);
     const redacted = readFileSync(join(extractDir, ".env.redacted"), "utf8");
@@ -191,7 +191,7 @@ describe("createBackup", () => {
   // returns 7/3/11 for checks/domains/alerts; the manifest inside the
   // archive must reflect those numbers — not zero, not undefined.
   it("writes a manifest whose counts match the DB (regression: getRawSqlite path)", async () => {
-    const dbPath = join(workDir, "certpulse.db");
+    const dbPath = join(workDir, "sslert.db");
     writeFileSync(dbPath, "fake");
     const envPath = join(workDir, ".env");
     writeFileSync(envPath, "CHECK_INTERVAL=60\n");
@@ -200,7 +200,7 @@ describe("createBackup", () => {
       dbPath,
       envPath,
     });
-    const extractDir = mkdtempSync(join(tmpdir(), "certpulse-bkp-reg-"));
+    const extractDir = mkdtempSync(join(tmpdir(), "sslert-bkp-reg-"));
     const { spawnSync } = await import("node:child_process");
     spawnSync("tar", ["-xzf", out, "-C", extractDir]);
     const manifest = JSON.parse(readFileSync(join(extractDir, "manifest.json"), "utf8")) as {
@@ -218,7 +218,7 @@ describe("createBackup", () => {
 describe("restoreBackup", () => {
   it("extracts a valid archive and reports the manifest without confirmation when --yes", async () => {
     // First create one
-    const dbPath = join(workDir, "certpulse.db");
+    const dbPath = join(workDir, "sslert.db");
     writeFileSync(dbPath, "fake");
     const envPath = join(workDir, ".env");
     writeFileSync(envPath, "CHECK_INTERVAL=60\n");
@@ -228,7 +228,7 @@ describe("restoreBackup", () => {
       envPath,
     });
     // Now restore into a different dbPath
-    const targetDb = join(workDir, "restore", "certpulse.db");
+    const targetDb = join(workDir, "restore", "sslert.db");
     const result = await restoreBackup({
       archivePath: archive,
       dbPath: targetDb,
@@ -253,7 +253,7 @@ describe("restoreBackup", () => {
   });
 
   it("skips the confirmation prompt when --yes is set (no stdin read)", async () => {
-    const dbPath = join(workDir, "certpulse.db");
+    const dbPath = join(workDir, "sslert.db");
     writeFileSync(dbPath, "fake");
     const envPath = join(workDir, ".env");
     writeFileSync(envPath, "FOO=bar\n");
@@ -266,7 +266,7 @@ describe("restoreBackup", () => {
     const confirmFn = vi.fn(async () => true);
     await restoreBackup({
       archivePath: archive,
-      dbPath: join(workDir, "restore2", "certpulse.db"),
+      dbPath: join(workDir, "restore2", "sslert.db"),
       envPath: join(workDir, "restore2", ".env"),
       yes: true,
       confirmFn,
@@ -275,7 +275,7 @@ describe("restoreBackup", () => {
   });
 
   it("aborts when the user declines confirmation", async () => {
-    const dbPath = join(workDir, "certpulse.db");
+    const dbPath = join(workDir, "sslert.db");
     writeFileSync(dbPath, "fake");
     const envPath = join(workDir, ".env");
     writeFileSync(envPath, "FOO=bar\n");
@@ -284,7 +284,7 @@ describe("restoreBackup", () => {
       dbPath,
       envPath,
     });
-    const targetDb = join(workDir, "restore3", "certpulse.db");
+    const targetDb = join(workDir, "restore3", "sslert.db");
     const result = await restoreBackup({
       archivePath: archive,
       dbPath: targetDb,

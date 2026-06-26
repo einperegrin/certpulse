@@ -1,14 +1,14 @@
 <div align="center">
 
-# 🔔 CertPulse
+# 🔔 SSLert
 
 **Self-hosted SSL certificate & domain expiry monitor with multi-channel alerts.**
 
 Let's Encrypt stopped expiry notifications on June 4, 2025.  
 Cert lifetimes are shrinking to 47 days by 2029.  
-CertPulse fills the gap.
+SSLert fills the gap.
 
-[![CI](https://github.com/einperegrin/certpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/einperegrin/certpulse/actions/workflows/ci.yml)
+[![CI](https://github.com/einperegrin/sslert/actions/workflows/ci.yml/badge.svg)](https://github.com/einperegrin/sslert/actions/workflows/ci.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](./LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker&logoColor=white)](./docker-compose.yml)
 
@@ -16,7 +16,7 @@ CertPulse fills the gap.
 
 </div>
 
-<img src="screenshot-800w.png" alt="CertPulse Dashboard" width="800" />
+<img src="screenshot-800w.png" alt="SSLert Dashboard" width="800" />
 
 ---
 
@@ -119,7 +119,7 @@ Dedup: at most one alert per (domain, source, channel, level) per 24 hours.
   "level": "urgent",
   "hostname": "example.com:443",
   "daysRemaining": 5,
-  "subject": "[CertPulse] example.com: Expires in 7 days",
+  "subject": "[SSLert] example.com: Expires in 7 days",
   "text": "…"
 }
 ```
@@ -160,9 +160,9 @@ curl -X POST http://localhost:5173/api/domains \
 |----------|----------|---------|-------|
 | `RESEND_API_KEY` | no | *empty* | If empty, alerts log to stdout |
 | `ALERT_EMAIL_TO` | yes¹ | *empty* | Destination email |
-| `ALERT_EMAIL_FROM` | no | `certpulse@localhost` | Use a Resend-verified domain |
+| `ALERT_EMAIL_FROM` | no | `sslert@localhost` | Use a Resend-verified domain |
 | `CHECK_INTERVAL` | no | `60` | Minutes between automatic checks |
-| `DATABASE_PATH` | no | `/app/data/certpulse.db` | SQLite file path |
+| `DATABASE_PATH` | no | `/app/data/sslert.db` | SQLite file path |
 | `PORT` | no | `3000` | API listen port (internal — not exposed to host) |
 | `WEB_PORT` | no | `5173` | Host port for the nginx reverse proxy |
 | `VITE_API_URL` | no | `http://localhost:3000` | Web → API URL (dev mode only) |
@@ -177,7 +177,7 @@ curl -X POST http://localhost:5173/api/domains \
 
 ## 📊 Monitoring with Grafana
 
-The API exposes Prometheus metrics at `GET /metrics` (no auth — like `/health`). A ready-to-import Grafana dashboard is shipped in the repo at [`packages/api/grafana/certpulse-dashboard.json`](./packages/api/grafana/certpulse-dashboard.json).
+The API exposes Prometheus metrics at `GET /metrics` (no auth — like `/health`). A ready-to-import Grafana dashboard is shipped in the repo at [`packages/api/grafana/sslert-dashboard.json`](./packages/api/grafana/sslert-dashboard.json).
 
 ### One-command deploy with Grafana + Prometheus
 
@@ -194,7 +194,7 @@ services:
     image: grafana/grafana:11.2.0
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=changeme
-    ports: ["3001:3000"]   # 3000 is taken by the CertPulse API
+    ports: ["3001:3000"]   # 3000 is taken by the SSLert API
     depends_on: [prometheus]
 ```
 
@@ -202,7 +202,7 @@ Minimal `prometheus.yml`:
 
 ```yaml
 scrape_configs:
-  - job_name: certpulse
+  - job_name: sslert
     metrics_path: /metrics
     static_configs:
       - targets: ["api:3000"]   # inside docker compose
@@ -217,19 +217,19 @@ All names below are exported by `prom-client` from `packages/api/src/lib/metrics
 
 | Metric | Type | Labels |
 |--------|------|--------|
-| `certpulse_http_request_duration_seconds` | Histogram | `result`, `method` |
-| `certpulse_http_requests_total` | Counter | `method`, `path`, `status` |
-| `certpulse_checks_total` | Counter | `result` |
-| `certpulse_check_duration_seconds` | Histogram | — |
-| `certpulse_alerts_sent_total` | Counter | `channel`, `source`, `result` |
-| `certpulse_alert_send_duration_seconds` | Histogram | `channel` |
-| `certpulse_rate_limit_hits_total` | Counter | `path` |
-| `certpulse_audit_log_writes_total` | Counter | `action`, `resource_type` |
-| `certpulse_last_check_timestamp_seconds` | Gauge | — |
-| `certpulse_last_alert_timestamp_seconds` | Gauge | — |
-| `certpulse_domains_total` | Gauge | — |
-| `certpulse_tokens_total` | Gauge | — |
-| `certpulse_db_query_duration_seconds` | Histogram | `operation` |
+| `sslert_http_request_duration_seconds` | Histogram | `result`, `method` |
+| `sslert_http_requests_total` | Counter | `method`, `path`, `status` |
+| `sslert_checks_total` | Counter | `result` |
+| `sslert_check_duration_seconds` | Histogram | — |
+| `sslert_alerts_sent_total` | Counter | `channel`, `source`, `result` |
+| `sslert_alert_send_duration_seconds` | Histogram | `channel` |
+| `sslert_rate_limit_hits_total` | Counter | `path` |
+| `sslert_audit_log_writes_total` | Counter | `action`, `resource_type` |
+| `sslert_last_check_timestamp_seconds` | Gauge | — |
+| `sslert_last_alert_timestamp_seconds` | Gauge | — |
+| `sslert_domains_total` | Gauge | — |
+| `sslert_tokens_total` | Gauge | — |
+| `sslert_db_query_duration_seconds` | Histogram | `operation` |
 
 Plus the full set of default Node.js process metrics (event-loop lag, GC, memory, fd count, …) from `prom-client`'s `collectDefaultMetrics()`.
 
@@ -243,7 +243,7 @@ Self-hosted data is the user's most important asset. A backup is a single `.tar.
 # from a running container
 docker compose exec api npm run backup:create
 # or from inside packages/api
-npm run backup:create                    # writes ./certpulse-backup-YYYYMMDD-HHMMSS.tar.gz
+npm run backup:create                    # writes ./sslert-backup-YYYYMMDD-HHMMSS.tar.gz
 npm run backup:create -- /tmp/cp.tar.gz  # custom output path
 
 # restore (asks for confirmation unless --yes)
@@ -280,7 +280,7 @@ docker compose exec api chown -R 10001:10001 /app/data
 
 # Or start clean (you will lose registered domains — re-add them afterwards):
 docker compose down
-docker volume rm certpulse_certpulse-data
+docker volume rm sslert_sslert-data
 docker compose up -d
 ```
 
@@ -306,7 +306,7 @@ The web dev server proxies `/api/*` to `http://localhost:3000` by default. Overr
 | Domain expiry | RDAP bootstrap + plain TCP WHOIS (no extra deps) |
 | Email | [Resend](https://resend.com/) (free tier: 100 emails/day) |
 | Web | React 19 + Vite 6 + Tailwind 4 + [shadcn/ui](https://ui.shadcn.com/) + TanStack Query 5 |
-| Storage | Single SQLite file via `certpulse-data` Docker volume |
+| Storage | Single SQLite file via `sslert-data` Docker volume |
 
 ## 🗓 Roadmap
 
@@ -323,4 +323,4 @@ PRs welcome! Open an issue first to discuss what you'd like to change.
 ## License
 
 Licensed under the [GNU Affero General Public License v3.0](./LICENSE).  
-If you'd like to use CertPulse in a closed-source product, contact us for a commercial license.
+If you'd like to use SSLert in a closed-source product, contact us for a commercial license.

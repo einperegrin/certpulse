@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to CertPulse are documented in this file. The format
+All notable changes to SSLert are documented in this file. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -10,7 +10,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Full code-review pass over v0.4.0. Every change below closes at least one
 finding from the structured review (CRITICAL/HIGH/MEDIUM/LOW) produced
-against `/workspace/certpulse` on 2026-06-17.
+against `/workspace/sslert` on 2026-06-17.
 
 ### Security
 

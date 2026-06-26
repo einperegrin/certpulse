@@ -9,7 +9,7 @@
  * "2h ago" the moment a row is inserted. The fix is to never let a
  * SQLite-format datetime leave the API in that shape.
  *
- * (Roman's bug report, 2026-06-23. Task: pippin-20260623-certpulse-tz-cert-bugs.)
+ * (Roman's bug report, 2026-06-23. Task: pippin-20260623-sslert-tz-cert-bugs.)
  */
 import { describe, expect, it } from "vitest";
 import { normalizeIsoDeep, toIsoString } from "./datetime.js";

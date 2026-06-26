@@ -21,8 +21,8 @@
  * trigger 429s.
  *
  * v0.4: also bumps two Prometheus counters for the Grafana dashboard:
- *   - `certpulse_rate_limit_hits_total{path}` on every 429
- *   - `certpulse_http_requests_total{method, path, status}` on every
+ *   - `sslert_rate_limit_hits_total{path}` on every 429
+ *   - `sslert_http_requests_total{method, path, status}` on every
  *     request that gets through (and on 429, with status="429" so the
  *     dashboard's "top error endpoints" panel catches rate-limited
  *     routes).

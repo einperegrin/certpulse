@@ -19,10 +19,10 @@ export default function App() {
     // Listen for both cross-tab (`storage`) and same-tab (custom event
     // dispatched by setApiToken/clearApiToken) token changes.
     window.addEventListener("storage", onTokenChange);
-    window.addEventListener("certpulse.tokenchange", onTokenChange);
+    window.addEventListener("sslert.tokenchange", onTokenChange);
     return () => {
       window.removeEventListener("storage", onTokenChange);
-      window.removeEventListener("certpulse.tokenchange", onTokenChange);
+      window.removeEventListener("sslert.tokenchange", onTokenChange);
     };
   }, []);
   const isLoginRoute = location.pathname === "/login";
@@ -33,7 +33,7 @@ export default function App() {
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
             <Link to="/" className="flex items-center gap-2 text-slate-900">
               <ShieldCheck className="h-6 w-6 text-sky-600" />
-              <span className="text-lg font-semibold">CertPulse</span>
+              <span className="text-lg font-semibold">SSLert</span>
             </Link>
             <nav className="flex items-center gap-2">
               <Link to="/">

@@ -25,8 +25,8 @@ const ALERT_LEVELS: AlertLevelInfo[] = [
   { level: "warning", subject: "Expires in 30 days", threshold: 30 },
 ];
 
-const SUBJECT_PREFIX_CERT = "[CertPulse]";
-const SUBJECT_PREFIX_DOMAIN = "[CertPulse Domain]";
+const SUBJECT_PREFIX_CERT = "[SSLert]";
+const SUBJECT_PREFIX_DOMAIN = "[SSLert Domain]";
 
 /**
  * Format a JS Date in SQLite's `datetime('now')` form
@@ -165,7 +165,7 @@ function buildAlertText(
   checkId: number
 ): string {
   const lines: string[] = [
-    `CertPulse ${source === "domain" ? "Domain" : "SSL"} Alert`,
+    `SSLert ${source === "domain" ? "Domain" : "SSL"} Alert`,
     ``,
     `Domain: ${domain.hostname}:${domain.port}`,
     source === "domain"

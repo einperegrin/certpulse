@@ -1,4 +1,4 @@
-# CertPulse web — static SPA served by nginx.
+# SSLert web — static SPA served by nginx.
 #
 # Hardening applied in v0.2:
 # - Task 1.7: nginx:alpine — minimal CVE surface.

@@ -1,6 +1,6 @@
-# Contributing to CertPulse
+# Contributing to SSLert
 
-Thanks for your interest in CertPulse! 🎉
+Thanks for your interest in SSLert! 🎉
 This is currently a solo-maintainer project, so your contributions — bug
 reports, fixes, docs, ideas — genuinely matter and are very welcome.
 
@@ -11,11 +11,11 @@ Assume good faith. Harassment of any kind is not tolerated.
 
 ## Reporting bugs
 
-Open a [GitHub Issue](https://github.com/einperegrin/certpulse/issues/new)
+Open a [GitHub Issue](https://github.com/einperegrin/sslert/issues/new)
 and include:
 
-- CertPulse version and commit (for Docker: `docker compose ps` shows the
-  image tag, e.g. `einperegrin/certpulse:v1.0.0`; for source installs:
+- SSLert version and commit (for Docker: `docker compose ps` shows the
+  image tag, e.g. `einperegrin/sslert:v1.0.0`; for source installs:
   `git rev-parse HEAD`)
 - How you deployed (Docker image? `docker compose up`? source install?)
 - Relevant logs (`api` container logs, browser console for UI issues)
@@ -24,7 +24,7 @@ and include:
 
 ## Suggesting features
 
-Open a [GitHub Issue](https://github.com/einperegrin/certpulse/issues/new)
+Open a [GitHub Issue](https://github.com/einperegrin/sslert/issues/new)
 and tag it as a feature request (the maintainer will apply the
 **enhancement** label on triage). Briefly describe:
 
@@ -32,7 +32,7 @@ and tag it as a feature request (the maintainer will apply the
 - Your proposed behaviour and any alternatives you considered
 - Whether you'd be willing to send a PR
 
-> ℹ️ CertPulse is [open-core (AGPL v3)](./LICENSE). Features that clearly
+> ℹ️ SSLert is [open-core (AGPL v3)](./LICENSE). Features that clearly
 > belong to a future **commercial / cloud** tier may be redirected there.
 
 ## Submitting a pull request
@@ -84,8 +84,8 @@ and tag it as a feature request (the maintainer will apply the
 ## Development setup
 
 ```bash
-git clone https://github.com/einperegrin/certpulse.git
-cd certpulse
+git clone https://github.com/einperegrin/sslert.git
+cd sslert
 npm install
 cp .env.example .env
 
@@ -112,7 +112,7 @@ Override with `VITE_API_URL` if needed.
 ```
 packages/api   # Hono 4 + Drizzle + better-sqlite3
 packages/web   # React 19 + Vite 6 + Tailwind 4
-landing/       # static marketing site (certpulse.com)
+landing/       # static marketing site (sslert.com)
 docker-compose.yml
 ```
 

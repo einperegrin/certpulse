@@ -1,6 +1,6 @@
-# CertPulse Landing
+# SSLert Landing
 
-Static landing page for [certpulse.com](https://certpulse.com).
+Static landing page for [sslert.com](https://sslert.com).
 
 ## Files
 

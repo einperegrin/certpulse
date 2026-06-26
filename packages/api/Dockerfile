@@ -1,4 +1,4 @@
-# CertPulse API — multi-stage build, non-root runtime.
+# SSLert API — multi-stage build, non-root runtime.
 #
 # Hardening applied in v0.2:
 # - Task 1.7: multi-stage build, runs as unprivileged user (UID 10001),
@@ -35,8 +35,8 @@ RUN apt-get update \
 # Dedicated unprivileged user. UID 10001 sits well clear of the host
 # user space (Debian allocates UIDs starting at 1000, Linux kernel
 # default for new users is 1000+).
-RUN groupadd --system --gid 10001 certpulse \
-    && useradd  --system --uid 10001 --gid certpulse --no-create-home --shell /usr/sbin/nologin certpulse
+RUN groupadd --system --gid 10001 sslert \
+    && useradd  --system --uid 10001 --gid sslert --no-create-home --shell /usr/sbin/nologin sslert
 
 # Copy the built artefacts. We use the workspace-root lockfile (this repo
 # uses a single npm workspace, no per-package lockfile). The runtime install
@@ -50,7 +50,7 @@ COPY --from=build --chown=root:root      /app/packages/web/package.json        .
 COPY --from=build --chown=root:root      /app/packages/api/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY --from=build --chown=root:root      /app/package.json                     ./package.json
 COPY --from=build --chown=root:root      /app/package-lock.json                ./package-lock.json
-COPY --from=build --chown=certpulse:certpulse /app/packages/api/src/db/migrations   ./dist/db/migrations
+COPY --from=build --chown=sslert:sslert /app/packages/api/src/db/migrations   ./dist/db/migrations
 
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh \
     && cd /app/packages/api && npm ci --omit=dev --no-audit --no-fund \

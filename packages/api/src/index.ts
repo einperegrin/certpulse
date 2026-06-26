@@ -49,8 +49,8 @@ function dbPing(db: DB): boolean {
  * /health/ready and on /metrics scrapes; cheap because the row
  * counts are tiny.
  *
- * v0.4: also refreshes `certpulse_last_check_timestamp_seconds` and
- * `certpulse_last_alert_timestamp_seconds` so the Grafana "last check
+ * v0.4: also refreshes `sslert_last_check_timestamp_seconds` and
+ * `sslert_last_alert_timestamp_seconds` so the Grafana "last check
  * age" / "last alert age" gauges always reflect the current state of
  * the DB at scrape time (the scheduler does NOT set them inline — a
  * missed tick would otherwise leave a stale value). (v0.4 / Grafana
@@ -232,7 +232,7 @@ export function createApp(options?: { db?: DB }) {
     "/api/docs",
     swaggerUI({
       url: "/api/openapi.json",
-      title: "CertPulse API — Swagger UI",
+      title: "SSLert API — Swagger UI",
     })
   );
 
@@ -411,7 +411,7 @@ export async function bootstrap() {
   const scheduler = startScheduler();
   logger.info(
     { port, cron: scheduler.expression, intervalMinutes: scheduler.intervalMinutes },
-    `[api] CertPulse API listening on :${port}`
+    `[api] SSLert API listening on :${port}`
   );
   const server = serve({ fetch: app.fetch, port });
 

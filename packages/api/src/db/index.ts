@@ -7,7 +7,7 @@ import * as schema from "./schema.js";
 export type DB = BetterSQLite3Database<typeof schema>;
 
 export function getDatabasePath(): string {
-  const raw = process.env.DATABASE_PATH ?? "./data/certpulse.db";
+  const raw = process.env.DATABASE_PATH ?? "./data/sslert.db";
   return resolve(process.cwd(), raw);
 }
 

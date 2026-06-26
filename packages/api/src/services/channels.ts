@@ -50,7 +50,7 @@ class ResendEmailSender implements AlertChannelSender {
   }
   async send(content: AlertContent, config: Record<string, unknown>): Promise<SendResult> {
     const to = typeof config.to === "string" ? config.to : (process.env.ALERT_EMAIL_TO ?? "");
-    const from = typeof config.from === "string" ? config.from : (process.env.ALERT_EMAIL_FROM ?? "certpulse@localhost");
+    const from = typeof config.from === "string" ? config.from : (process.env.ALERT_EMAIL_FROM ?? "sslert@localhost");
     if (!to) return { error: "No destination email configured" };
     if (!this.apiKey) {
       // Log to stdout via pino — keeps the old fallback behaviour.
@@ -110,8 +110,8 @@ class WebhookSender implements AlertChannelSender {
     if (secret) {
       const signature = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
       const timestamp = Math.floor(Date.now() / 1000).toString();
-      headers["X-CertPulse-Signature"] = signature;
-      headers["X-CertPulse-Timestamp"] = timestamp;
+      headers["X-SSLert-Signature"] = signature;
+      headers["X-SSLert-Timestamp"] = timestamp;
     }
     try {
       const res = await fetch(url, {

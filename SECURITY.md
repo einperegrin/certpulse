@@ -1,6 +1,6 @@
 # Security Policy
 
-CertPulse is a self-hosted SSL/TLS and domain-expiry monitor. It connects
+SSLert is a self-hosted SSL/TLS and domain-expiry monitor. It connects
 outbound to your services and the public internet — security bugs in the
 monitoring plane itself can have real impact (leaked secrets in
 config, SSRF against the host, RCE via the API).
@@ -22,7 +22,7 @@ security fixes. Older versions are not patched — please upgrade.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Report privately via [GitHub Security Advisories → New draft advisory](https://github.com/einperegrin/certpulse/security/advisories/new).
+Report privately via [GitHub Security Advisories → New draft advisory](https://github.com/einperegrin/sslert/security/advisories/new).
 
 Include, to the extent you can:
 
@@ -51,7 +51,7 @@ to remain anonymous).
 
 ## Scope
 
-**In scope** — vulnerabilities in the CertPulse codebase:
+**In scope** — vulnerabilities in the SSLert codebase:
 
 - The Hono API server (`packages/api`)
 - The React dashboard (`packages/web`)
@@ -69,7 +69,7 @@ to remain anonymous).
   (e.g. someone with `docker exec` into the api container bypassing
   its own auth)
 - Theoretical issues without a realistic attack path
-- TLS / certificate-validation logic: CertPulse does **not** trust the
+- TLS / certificate-validation logic: SSLert does **not** trust the
   certificates it monitors, so failures to validate expiry/issuer
   structure on those certs are by design
 

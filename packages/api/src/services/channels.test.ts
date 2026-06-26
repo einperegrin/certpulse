@@ -103,7 +103,7 @@ describe("alert channel senders", () => {
       const sender = getChannelSender("webhook");
       const r = await sender.send(
         {
-          subject: "CertPulse test",
+          subject: "SSLert test",
           text: "body text",
           level: "warning",
           hostname: "example.com",
@@ -117,8 +117,8 @@ describe("alert channel senders", () => {
       expect(r.id).toBe("webhook-200");
       expect(received).not.toBeNull();
       const body = received!.body;
-      const sigHeader = received!.headers["x-certpulse-signature"];
-      const tsHeader = received!.headers["x-certpulse-timestamp"];
+      const sigHeader = received!.headers["x-sslert-signature"];
+      const tsHeader = received!.headers["x-sslert-timestamp"];
       const expected = "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
       expect(typeof sigHeader).toBe("string");
       expect(sigHeader).toBe(expected);
@@ -145,8 +145,8 @@ describe("alert channel senders", () => {
       );
       expect(r.error).toBeUndefined();
       expect(received).not.toBeNull();
-      expect(received!.headers["x-certpulse-signature"]).toBeUndefined();
-      expect(received!.headers["x-certpulse-timestamp"]).toBeUndefined();
+      expect(received!.headers["x-sslert-signature"]).toBeUndefined();
+      expect(received!.headers["x-sslert-timestamp"]).toBeUndefined();
     });
 
     it("does NOT add signature headers when secret is an empty string", async () => {
@@ -164,8 +164,8 @@ describe("alert channel senders", () => {
         process.env
       );
       expect(r.error).toBeUndefined();
-      expect(received!.headers["x-certpulse-signature"]).toBeUndefined();
-      expect(received!.headers["x-certpulse-timestamp"]).toBeUndefined();
+      expect(received!.headers["x-sslert-signature"]).toBeUndefined();
+      expect(received!.headers["x-sslert-timestamp"]).toBeUndefined();
     });
   });
 
@@ -287,8 +287,8 @@ describe("alert channel senders", () => {
         const sender = getChannelSender("email");
         const r = await sender.send(
           {
-            subject: "CertPulse test subject",
-            text: "certpulse-alert-body",
+            subject: "SSLert test subject",
+            text: "sslert-alert-body",
             level: "warning",
             hostname: "test.example.com",
             daysRemaining: 5,
@@ -321,7 +321,7 @@ describe("alert channel senders", () => {
           (o) => o.msg === "alert:email:log"
         );
         if (headerLine) {
-          expect(headerLine.subject).toBe("CertPulse test subject");
+          expect(headerLine.subject).toBe("SSLert test subject");
           expect(headerLine.to).toBe("[REDACTED]");
           expect(headerLine.from).toBe("[REDACTED]");
         }
@@ -332,7 +332,7 @@ describe("alert channel senders", () => {
         const bodyEmitted = parsedLines.some((o) => {
           // pino stringifies a string arg as `msg`
           if (typeof o.msg === "string") {
-            return o.msg.includes("certpulse-alert-body");
+            return o.msg.includes("sslert-alert-body");
           }
           return false;
         });
