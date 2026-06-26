@@ -3,9 +3,9 @@ services:
     build:
       context: .
       dockerfile: packages/api/Dockerfile
-    # v0.2 hardening: do NOT expose the api on a host port. All traffic
-    # must go through the nginx reverse proxy in the `web` service. If
-    # an operator really needs to reach the API directly (e.g. for the
+    # Do NOT expose the api on a host port. All traffic must go
+    # through the nginx reverse proxy in the `web` service. If an
+    # operator really needs to reach the API directly (e.g. for the
     # token CLI from the host), they can `docker compose exec api ...`.
     expose:
       - "3000"
