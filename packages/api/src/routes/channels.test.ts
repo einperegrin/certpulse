@@ -112,7 +112,7 @@ describe("alert channels router", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         channel: "ntfy",
-        config: { topic: "certpulse" },
+        config: { topic: "sslert" },
       }),
     });
     const created = (await post.json()) as { channel: { id: number; enabled: boolean } };

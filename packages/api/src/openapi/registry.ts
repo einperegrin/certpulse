@@ -33,7 +33,7 @@ openApiRegistry.registerComponent("securitySchemes", "bearerAuth", {
 });
 
 /**
- * Build the OpenAPI 3.1 document for the CertPulse HTTP API.
+ * Build the OpenAPI 3.1 document for the SSLert HTTP API.
  * Pulls everything registered against `openApiRegistry` and adds the
  * `info` and `servers` blocks.
  */
@@ -42,7 +42,7 @@ export function buildOpenApiDocument(baseUrl: string) {
   return generator.generateDocument({
     openapi: "3.1.0",
     info: {
-      title: "CertPulse API",
+      title: "SSLert API",
       version: "0.4.0",
       description:
         "Self-hosted SSL/TLS certificate and domain expiry monitor. " +

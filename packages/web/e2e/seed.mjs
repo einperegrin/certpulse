@@ -28,7 +28,7 @@ export default async function globalSetup() {
   const apiDir = join(repoRoot, "packages", "api");
   const webDir = repoRoot;
   const tempDir = mkdtempSync(join(tmpdir(), "cp-e2e-"));
-  const dbPath = join(tempDir, "certpulse.db");
+  const dbPath = join(tempDir, "sslert.db");
   const apiPort = 31000 + Math.floor(Math.random() * 1000);
   const apiBase = `http://127.0.0.1:${apiPort}`;
   const token = "cp_test_" + randomBytes(24).toString("base64url");
@@ -81,10 +81,10 @@ export default async function globalSetup() {
   );
   await waitForOk("http://127.0.0.1:4173/", 15000);
 
-  process.env["CERTPULSE_E2E_API"] = apiBase;
-  process.env["CERTPULSE_E2E_TOKEN"] = token;
-  process.env["CERTPULSE_E2E_DB"] = dbPath;
-  process.env["CERTPULSE_E2E_TEMP"] = tempDir;
+  process.env["SSLERT_E2E_API"] = apiBase;
+  process.env["SSLERT_E2E_TOKEN"] = token;
+  process.env["SSLERT_E2E_DB"] = dbPath;
+  process.env["SSLERT_E2E_TEMP"] = tempDir;
 
   process.on("SIGTERM", () => {
     api.kill("SIGTERM");

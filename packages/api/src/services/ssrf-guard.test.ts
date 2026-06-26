@@ -2,7 +2,7 @@
  * SSRF guard tests. Closes C-2 from the v0.2 hardening plan.
  *
  * The guard rejects hostnames that resolve to (or ARE) private/loopback/
- * link-local addresses. This is the single chokepoint before CertPulse
+ * link-local addresses. This is the single chokepoint before SSLert
  * opens a TLS connection, so DNS-rebinding and cloud-metadata attacks
  * have to pass through here.
  */

@@ -1,4 +1,4 @@
--- CertPulse v1: multi-channel alerts + domain expiry
+-- SSLert v1: multi-channel alerts + domain expiry
 -- Adds per-domain alert channel config table and domain-expiry columns to checks.
 -- Also adds `source` and `channel` columns to alerts for distinguishing cert vs
 -- domain expiry alerts and which channel dispatched them.

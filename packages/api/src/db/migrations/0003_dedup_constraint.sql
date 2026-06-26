@@ -1,4 +1,4 @@
--- CertPulse v0.2 (H-2): Alerter dedup race fix.
+-- SSLert v0.2 (H-2): Alerter dedup race fix.
 --
 -- Pre-fix, the alerter had a TOCTOU window: it would SELECT for a recent
 -- alert with the same (domain, source, channel, level), and if none

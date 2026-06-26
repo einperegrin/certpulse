@@ -254,7 +254,7 @@ export function createDomainsRouter(db: DB = getDb()): Hono<Env> {
           {
             error: "Hostname resolves to a private/loopback/link-local address",
             hint:
-              "CertPulse cannot monitor internal services by default. " +
+              "SSLert cannot monitor internal services by default. " +
               "Set ALLOW_PRIVATE_HOSTS=1 to override (not recommended).",
           },
           400

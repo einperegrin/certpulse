@@ -97,9 +97,9 @@ describe("v0.3 /metrics endpoint", () => {
     const text = await res.text();
     // prom-client default Node.js metrics include process_cpu_seconds_total.
     expect(text).toContain("process_cpu_user_seconds_total");
-    // CertPulse custom metrics are registered.
-    expect(text).toContain("certpulse_checks_total");
-    expect(text).toContain("certpulse_db_query_duration_seconds");
+    // SSLert custom metrics are registered.
+    expect(text).toContain("sslert_checks_total");
+    expect(text).toContain("sslert_db_query_duration_seconds");
   });
 
   it("refreshes domain / token gauges from the DB", async () => {
@@ -119,8 +119,8 @@ describe("v0.3 /metrics endpoint", () => {
     const res = await app.request("/metrics");
     expect(res.status).toBe(200);
     const text = await res.text();
-    expect(text).toContain("certpulse_domains_total");
-    expect(text).toContain("certpulse_tokens_total");
+    expect(text).toContain("sslert_domains_total");
+    expect(text).toContain("sslert_tokens_total");
   });
 });
 

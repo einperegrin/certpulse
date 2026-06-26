@@ -15,7 +15,7 @@ const level = process.env.LOG_LEVEL ?? "info";
 
 export const logger: Logger = pino({
   level,
-  base: { app: "certpulse-api" },
+  base: { app: "sslert-api" },
   redact: {
     paths: [
       // Incoming HTTP auth

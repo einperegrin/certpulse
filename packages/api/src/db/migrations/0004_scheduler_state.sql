@@ -1,4 +1,4 @@
--- CertPulse v0.2 (H-3): Scheduler lock + state.
+-- SSLert v0.2 (H-3): Scheduler lock + state.
 --
 -- The pre-fix scheduler held a `running` boolean in module scope. A
 -- crash would leave it true forever, and a parallel process (e.g. a

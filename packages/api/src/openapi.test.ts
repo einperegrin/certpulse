@@ -44,7 +44,7 @@ describe("v0.4 OpenAPI spec + Swagger UI", () => {
       components?: { securitySchemes?: Record<string, unknown> };
     };
     expect(spec.openapi).toMatch(/^3\./);
-    expect(spec.info.title).toBe("CertPulse API");
+    expect(spec.info.title).toBe("SSLert API");
     expect(spec.info.version).toBeDefined();
     expect(spec.paths).toBeDefined();
   });
@@ -60,7 +60,7 @@ describe("v0.4 OpenAPI spec + Swagger UI", () => {
   it("Both /api/openapi.json and /api/docs are reachable WITHOUT a Bearer token", async () => {
     // Disable auth to be extra sure these endpoints are exempt.
     process.env.AUTH_DISABLED = "1";
-    delete process.env.CERTPULSE_API_TOKEN;
+    delete process.env.SSLERT_API_TOKEN;
 
     const { app } = makeApp();
     const specRes = await app.request("/api/openapi.json");

@@ -1,9 +1,9 @@
-# CertPulse release image — single combined image that runs both the
+# SSLert release image — single combined image that runs both the
 # API (Hono) and the Web UI (static SPA served by nginx).
 #
 # Why a single image (Option A from the launch task):
 # - The Show HN post / Reddit launch will read `docker run -p 8080:80
-#   ghcr.io/einperegrin/certpulse:v0.4.0` — one image, one command,
+#   ghcr.io/einperegrin/sslert:v0.4.0` — one image, one command,
 #   zero repo clone.
 # - Everything in compose's api + web services is already built
 #   elsewhere in the repo; this file is a thin wrapper that combines
@@ -33,7 +33,7 @@
 #   `--read-only` (a writable tmpfs on /tmp and /app/data is enough
 #   for the api to function; we add a default --tmpfs in the README
 #   snippet). The image itself sets up /app/data as a directory so
-#   the user can `-v certpulse-data:/app/data` cleanly.
+#   the user can `-v sslert-data:/app/data` cleanly.
 #
 # This file is a sibling to packages/{api,web}/Dockerfile. Do not
 # delete the package Dockerfiles — compose users still need them.
@@ -95,11 +95,11 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 # Dedicated unprivileged user for the api process. Matches the UID used by
-# packages/api/Dockerfile so a `docker run -v certpulse-data:/app/data` from
+# packages/api/Dockerfile so a `docker run -v sslert-data:/app/data` from
 # a previous compose deployment Just Works — the chown in the entrypoint
 # already aligns ownership with this UID.
-RUN groupadd --system --gid 10001 certpulse \
-    && useradd  --system --uid 10001 --gid certpulse --no-create-home --shell /usr/sbin/nologin certpulse
+RUN groupadd --system --gid 10001 sslert \
+    && useradd  --system --uid 10001 --gid sslert --no-create-home --shell /usr/sbin/nologin sslert
 
 # --- API artefacts ---
 # We copy the compiled api, its package.json (for the right `npm` tree), the
@@ -116,7 +116,7 @@ COPY --from=api-build --chown=root:root      /app/packages/api/package.json     
 COPY --from=api-build --chown=root:root      /app/packages/api/docker-entrypoint.sh /usr/local/bin/api-entrypoint.sh
 COPY --from=api-build --chown=root:root      /app/package.json                     ./package.json
 COPY --from=api-build --chown=root:root      /app/package-lock.json                ./package-lock.json
-COPY --from=api-build --chown=certpulse:certpulse /app/packages/api/src/db/migrations   ./dist/db/migrations
+COPY --from=api-build --chown=sslert:sslert /app/packages/api/src/db/migrations   ./dist/db/migrations
 
 RUN chmod 0755 /usr/local/bin/api-entrypoint.sh \
     # Install with workspace hoisting from the ROOT, not from
@@ -145,19 +145,19 @@ RUN chmod 0755 /usr/local/bin/api-entrypoint.sh \
 # `http://api:3000` as a Docker-DNS hostname); instead it uses
 # nginx.release.conf which proxies to `http://127.0.0.1:3000` — the
 # in-container loopback where the api listens.
-COPY --from=web-build --chown=www-data:www-data /app/packages/web/dist /var/www/certpulse
-COPY --chown=root:root docker/nginx.release.conf /etc/nginx/sites-available/certpulse
+COPY --from=web-build --chown=www-data:www-data /app/packages/web/dist /var/www/sslert
+COPY --chown=root:root docker/nginx.release.conf /etc/nginx/sites-available/sslert
 RUN rm -f /etc/nginx/sites-enabled/default \
-    && ln -s /etc/nginx/sites-available/certpulse /etc/nginx/sites-enabled/certpulse \
+    && ln -s /etc/nginx/sites-available/sslert /etc/nginx/sites-enabled/sslert \
     && mkdir -p /var/cache/nginx /var/log/nginx /var/lib/nginx /run/nginx \
-    && chown -R www-data:www-data /var/cache/nginx /var/log/nginx /var/lib/nginx /run/nginx /var/www/certpulse
+    && chown -R www-data:www-data /var/cache/nginx /var/log/nginx /var/lib/nginx /run/nginx /var/www/sslert
 
 # --- The combined-image entrypoint: starts the api, waits for /health, then
 #     execs nginx in the foreground. ---
 COPY --chown=root:root docker/start.sh /usr/local/bin/start.sh
 RUN chmod 0755 /usr/local/bin/start.sh
 
-# The data volume directory. Compose users `docker run -v certpulse-data:/app/data`
+# The data volume directory. Compose users `docker run -v sslert-data:/app/data`
 # and the entrypoint chowns it to UID 10001 on every start.
 RUN mkdir -p /app/data && chown 10001:10001 /app/data
 

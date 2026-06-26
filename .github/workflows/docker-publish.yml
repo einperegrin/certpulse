@@ -1,8 +1,8 @@
-# CertPulse — publish a single combined image to GHCR.
+# SSLert — publish a single combined image to GHCR.
 #
 # Why this workflow exists:
 # - v0.4.0 launch (Show HN, Tuesday 16.06 14:00 UTC) needs a one-liner:
-#     docker run -p 8080:80 ghcr.io/einperegrin/certpulse:v0.4.0
+#     docker run -p 8080:80 ghcr.io/einperegrin/sslert:v0.4.0
 #   No `git clone`, no `docker compose` — just pull and run.
 # - We use GHCR (not Docker Hub) so the image lives next to the source
 #   and the `GITHUB_TOKEN` already has `packages: write` for public repos.
@@ -76,17 +76,17 @@ jobs:
           # already gates the `latest` tag on a real release event
           # (tag push), so dev runs from `workflow_dispatch` don't
           # accidentally promote to latest.
-          images: ghcr.io/einperegrin/certpulse
+          images: ghcr.io/einperegrin/sslert
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
           flavor: latest=auto
           labels: |
-            org.opencontainers.image.title=CertPulse
-            org.opencontainers.image.source=https://github.com/einperegrin/certpulse
+            org.opencontainers.image.title=SSLert
+            org.opencontainers.image.source=https://github.com/einperegrin/sslert
             org.opencontainers.image.licenses=AGPL-3.0
-            org.opencontainers.image.documentation=https://github.com/einperegrin/certpulse/blob/main/README.md
+            org.opencontainers.image.documentation=https://github.com/einperegrin/sslert/blob/main/README.md
 
       - name: Capture manual tag input (workflow_dispatch only)
         id: manual-tag
@@ -106,9 +106,9 @@ jobs:
         run: |
           if [ -n "${MANUAL_TAG:-}" ]; then
             {
-              echo "tags=ghcr.io/einperegrin/certpulse:${MANUAL_TAG}"
+              echo "tags=ghcr.io/einperegrin/sslert:${MANUAL_TAG}"
               echo "## Effective tags" >> "$GITHUB_STEP_SUMMARY"
-              echo "ghcr.io/einperegrin/certpulse:${MANUAL_TAG}" >> "$GITHUB_STEP_SUMMARY"
+              echo "ghcr.io/einperegrin/sslert:${MANUAL_TAG}" >> "$GITHUB_STEP_SUMMARY"
             }
           else
             {
@@ -149,8 +149,8 @@ jobs:
           push: true
           tags: ${{ steps.effective-tags.outputs.tags }}
           labels: |
-            org.opencontainers.image.title=CertPulse
-            org.opencontainers.image.source=https://github.com/einperegrin/certpulse
+            org.opencontainers.image.title=SSLert
+            org.opencontainers.image.source=https://github.com/einperegrin/sslert
             org.opencontainers.image.licenses=AGPL-3.0
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.created=${{ steps.version.outputs.iso8601 }}

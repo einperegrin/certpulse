@@ -27,7 +27,7 @@ const CHANNEL_ICONS: Record<ChannelKind, React.ReactNode> = {
 const CHANNEL_FIELDS: Record<ChannelKind, { key: string; label: string; type?: string; placeholder?: string }[]> = {
   email: [
     { key: "to", label: "To", type: "email", placeholder: "alerts@example.com" },
-    { key: "from", label: "From", placeholder: "certpulse@example.com" },
+    { key: "from", label: "From", placeholder: "sslert@example.com" },
   ],
   webhook: [
     { key: "url", label: "URL", placeholder: "https://example.com/hook" },
@@ -41,7 +41,7 @@ const CHANNEL_FIELDS: Record<ChannelKind, { key: string; label: string; type?: s
     { key: "url", label: "Incoming Webhook URL", placeholder: "https://hooks.slack.com/services/…" },
   ],
   ntfy: [
-    { key: "topic", label: "Topic", placeholder: "certpulse-alerts" },
+    { key: "topic", label: "Topic", placeholder: "sslert-alerts" },
     { key: "server", label: "Server (optional)", placeholder: "https://ntfy.sh" },
   ],
 };
@@ -221,7 +221,7 @@ export function ChannelsEditor({ domainId }: { domainId: number }) {
           {" "}
           For generic webhooks, set a signing secret (16+ chars) to add
           {" "}
-          <code>X-CertPulse-Signature: sha256=…</code> + timestamp headers to deliveries.
+          <code>X-SSLert-Signature: sha256=…</code> + timestamp headers to deliveries.
         </p>
       </CardContent>
     </Card>

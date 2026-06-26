@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>CertPulse — Self-hosted SSL certificate &amp; domain expiry monitor</title>
+  <title>SSLert — Self-hosted SSL certificate &amp; domain expiry monitor</title>
   <meta name="description" content="Open-core, self-hosted SSL certificate and domain expiry monitor. Docker one-liner, 5 alert channels (email, webhook, Telegram, Slack, ntfy), zero external dependencies. Replaces Let's Encrypt expiry emails." />
   <meta name="color-scheme" content="dark" />
   <meta name="theme-color" content="#0a0a0f" />
-  <meta name="generator" content="CertPulse landing (static)" />
+  <meta name="generator" content="SSLert landing (static)" />
   <meta name="referrer" content="no-referrer" />
   <!--
     M-7: Content Security Policy. The landing page only loads:
@@ -20,7 +20,7 @@
       - our own images and data: URIs (img-src 'self' data:)
     No external scripts. No eval. No frame ancestors.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://certpulse.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://sslert.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none';" />
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%2310b981'/><path d='M20 33l9 9 15-18' fill='none' stroke='%230a0a0f' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
 
@@ -33,29 +33,29 @@
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="CertPulse" />
-  <meta property="og:title" content="CertPulse — Self-hosted SSL certificate monitor" />
+  <meta property="og:site_name" content="SSLert" />
+  <meta property="og:title" content="SSLert — Self-hosted SSL certificate monitor" />
   <meta property="og:description" content="Docker one-liner. 5 alert channels. Zero external dependencies. The open-core replacement for Let's Encrypt expiry emails." />
-  <meta property="og:url" content="https://certpulse.com/" />
-  <meta property="og:image" content="https://certpulse.com/og-image.png" />
+  <meta property="og:url" content="https://sslert.com/" />
+  <meta property="og:image" content="https://sslert.com/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="CertPulse — Self-hosted SSL certificate monitor" />
-  <meta property="og:image" content="https://certpulse.com/og-image.svg" />
+  <meta property="og:image:alt" content="SSLert — Self-hosted SSL certificate monitor" />
+  <meta property="og:image" content="https://sslert.com/og-image.svg" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="CertPulse — Self-hosted SSL certificate monitor" />
+  <meta name="twitter:title" content="SSLert — Self-hosted SSL certificate monitor" />
   <meta name="twitter:description" content="Docker one-liner. 5 alert channels. Zero external dependencies. Replaces Let's Encrypt expiry emails." />
-  <meta name="twitter:image" content="https://certpulse.com/og-image.png" />
-  <meta name="twitter:image:alt" content="CertPulse — Self-hosted SSL certificate monitor" />
+  <meta name="twitter:image" content="https://sslert.com/og-image.png" />
+  <meta name="twitter:image:alt" content="SSLert — Self-hosted SSL certificate monitor" />
 
   <!-- JSON-LD -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "CertPulse",
+    "name": "SSLert",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows",
     "description": "Self-hosted SSL certificate and domain expiry monitor with multi-channel alerts.",
@@ -65,8 +65,8 @@
       "priceCurrency": "USD"
     },
     "license": "https://www.gnu.org/licenses/agpl-3.0.html",
-    "url": "https://certpulse.com/",
-    "codeRepository": "https://github.com/einperegrin/certpulse"
+    "url": "https://sslert.com/",
+    "codeRepository": "https://github.com/einperegrin/sslert"
   }
   </script>
 </head>
@@ -75,7 +75,7 @@
 
   <header class="site-header" role="banner">
     <div class="container header-inner">
-      <a class="brand" href="#top" aria-label="CertPulse home">
+      <a class="brand" href="#top" aria-label="SSLert home">
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="28" height="28" focusable="false" aria-hidden="true">
             <circle cx="32" cy="32" r="28" fill="url(#bg)"/>
@@ -88,7 +88,7 @@
             </defs>
           </svg>
         </span>
-        <span class="brand-name">CertPulse</span>
+        <span class="brand-name">SSLert</span>
       </a>
       <nav class="site-nav" aria-label="Primary">
         <a href="#features">Features</a>
@@ -97,7 +97,7 @@
         <a href="#open-source">Open source</a>
       </nav>
       <div class="header-cta">
-        <a class="btn btn-ghost" href="https://github.com/einperegrin/certpulse" rel="noopener" target="_blank">
+        <a class="btn btn-ghost" href="https://github.com/einperegrin/sslert" rel="noopener" target="_blank">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.1c-3.2.69-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.82 1.18 3.08 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"/></svg>
           <span>GitHub</span>
         </a>
@@ -123,10 +123,10 @@
           Docker one-liner. 5 alert channels. Zero external dependencies.
         </p>
         <p class="sub">
-          CertPulse watches your TLS certificates and domain registrations, alerting you 30, 7 and 1 days before they expire — across email, webhook, Telegram, Slack and ntfy.
+          SSLert watches your TLS certificates and domain registrations, alerting you 30, 7 and 1 days before they expire — across email, webhook, Telegram, Slack and ntfy.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary btn-lg" href="https://github.com/einperegrin/certpulse" rel="noopener" target="_blank">
+          <a class="btn btn-primary btn-lg" href="https://github.com/einperegrin/sslert" rel="noopener" target="_blank">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.1c-3.2.69-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.82 1.18 3.08 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"/></svg>
             View on GitHub
           </a>
@@ -156,7 +156,7 @@
           And it's only going to get worse. The CA/Browser Forum has approved a roadmap that shrinks public TLS certificate lifetimes to <strong>47 days by 2029</strong>, with intermediate steps at 200, 100 and now 90 days already in motion. Shorter lifetimes mean more frequent renewals, more chance of a mistake, and more chance of a silent expiry.
         </p>
         <p>
-          CertPulse is the lightweight, self-hosted replacement. Drop it on any box with Docker and it watches every certificate and domain registration you point it at — quietly, on a cron, with the alerts going wherever you already read messages.
+          SSLert is the lightweight, self-hosted replacement. Drop it on any box with Docker and it watches every certificate and domain registration you point it at — quietly, on a cron, with the alerts going wherever you already read messages.
         </p>
       </div>
     </section>
@@ -228,10 +228,10 @@
             <div>
               <h3>Clone &amp; configure</h3>
               <div class="code-wrap">
-                <pre><code>git clone https://github.com/einperegrin/certpulse.git
-cd certpulse
+                <pre><code>git clone https://github.com/einperegrin/sslert.git
+cd sslert
 cp .env.example .env</code></pre>
-                <button class="copy-btn" type="button" data-copy="git clone https://github.com/einperegrin/certpulse.git && cd certpulse && cp .env.example .env" aria-label="Copy clone command">Copy</button>
+                <button class="copy-btn" type="button" data-copy="git clone https://github.com/einperegrin/sslert.git && cd sslert && cp .env.example .env" aria-label="Copy clone command">Copy</button>
               </div>
             </div>
           </li>
@@ -245,7 +245,7 @@ RESEND_API_KEY=re_xxx            # https://resend.com (free 100/day)
 ALERT_EMAIL_TO=alerts@example.com
 # Or set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID
 # Or set SLACK_WEBHOOK_URL
-# Or set NTFY_TOPIC=my-certpulse</code></pre>
+# Or set NTFY_TOPIC=my-sslert</code></pre>
                 <button class="copy-btn" type="button" data-copy="RESEND_API_KEY=re_xxx
 ALERT_EMAIL_TO=alerts@example.com" aria-label="Copy env example">Copy</button>
               </div>
@@ -270,16 +270,16 @@ ALERT_EMAIL_TO=alerts@example.com" aria-label="Copy env example">Copy</button>
     <section id="compare" class="compare" aria-labelledby="compare-title">
       <div class="container">
         <header class="section-head">
-          <h2 id="compare-title" class="section-title">How CertPulse compares</h2>
+          <h2 id="compare-title" class="section-title">How SSLert compares</h2>
           <p class="section-sub">The only open-core, self-hosted option with five real alert channels.</p>
         </header>
         <div class="table-wrap">
           <table class="compare-table">
-            <caption class="visually-hidden">Comparison of CertPulse, UptimeRobot, Certimon and TrackSSL</caption>
+            <caption class="visually-hidden">Comparison of SSLert, UptimeRobot, Certimon and TrackSSL</caption>
             <thead>
               <tr>
                 <th scope="col">&nbsp;</th>
-                <th scope="col">CertPulse</th>
+                <th scope="col">SSLert</th>
                 <th scope="col">UptimeRobot</th>
                 <th scope="col">Certimon</th>
                 <th scope="col">TrackSSL</th>
@@ -346,18 +346,18 @@ ALERT_EMAIL_TO=alerts@example.com" aria-label="Copy env example">Copy</button>
       <div class="container narrow">
         <h2 id="oss-title" class="section-title">Truly open source. Built in public.</h2>
         <p>
-          CertPulse is licensed under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" rel="noopener" target="_blank">AGPL v3</a> — the same license used by Nextcloud, Mastodon and Bitwarden. You can read every line, run it forever, and ship modifications internally without permission. The AGPL only kicks in if you offer CertPulse itself as a hosted service to others.
+          SSLert is licensed under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" rel="noopener" target="_blank">AGPL v3</a> — the same license used by Nextcloud, Mastodon and Bitwarden. You can read every line, run it forever, and ship modifications internally without permission. The AGPL only kicks in if you offer SSLert itself as a hosted service to others.
         </p>
         <p>
           The roadmap is on GitHub. Issues and PRs are public. New alert channels, CT-log monitoring and internal/PKI certificate support are all queued up — and we want your input on which to prioritise next.
         </p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="https://github.com/einperegrin/certpulse" rel="noopener" target="_blank">
+          <a class="btn btn-primary" href="https://github.com/einperegrin/sslert" rel="noopener" target="_blank">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.1c-3.2.69-3.87-1.36-3.87-1.36-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.24 2.75.12 3.04.74.8 1.18 1.82 1.18 3.08 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.65 18.35.5 12 .5Z"/></svg>
             Star on GitHub
           </a>
-          <a class="btn btn-ghost" href="https://github.com/einperegrin/certpulse/blob/main/CONTRIBUTING.md" rel="noopener" target="_blank">Contribute →</a>
-          <a class="btn btn-ghost" href="https://github.com/einperegrin/certpulse/issues" rel="noopener" target="_blank">Open an issue →</a>
+          <a class="btn btn-ghost" href="https://github.com/einperegrin/sslert/blob/main/CONTRIBUTING.md" rel="noopener" target="_blank">Contribute →</a>
+          <a class="btn btn-ghost" href="https://github.com/einperegrin/sslert/issues" rel="noopener" target="_blank">Open an issue →</a>
         </div>
       </div>
     </section>
@@ -369,15 +369,15 @@ ALERT_EMAIL_TO=alerts@example.com" aria-label="Copy env example">Copy</button>
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="22" height="22"><circle cx="32" cy="32" r="28" fill="#10b981"/><path d="M20 33l9 9 15-18" fill="none" stroke="#0a0a0f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </span>
-        <span>CertPulse</span>
+        <span>SSLert</span>
       </div>
       <nav class="footer-nav" aria-label="Footer">
-        <a href="https://github.com/einperegrin/certpulse" rel="noopener" target="_blank">GitHub</a>
-        <a href="https://github.com/einperegrin/certpulse/blob/main/README.md" rel="noopener" target="_blank">Docs</a>
-        <a href="https://github.com/einperegrin/certpulse/issues" rel="noopener" target="_blank">Issues</a>
-        <a href="https://github.com/einperegrin/certpulse/blob/main/LICENSE" rel="noopener" target="_blank">License</a>
+        <a href="https://github.com/einperegrin/sslert" rel="noopener" target="_blank">GitHub</a>
+        <a href="https://github.com/einperegrin/sslert/blob/main/README.md" rel="noopener" target="_blank">Docs</a>
+        <a href="https://github.com/einperegrin/sslert/issues" rel="noopener" target="_blank">Issues</a>
+        <a href="https://github.com/einperegrin/sslert/blob/main/LICENSE" rel="noopener" target="_blank">License</a>
       </nav>
-      <p class="copyright">© 2026 CertPulse &middot; AGPL v3 &middot; Built with care by indie devs.</p>
+      <p class="copyright">© 2026 SSLert &middot; AGPL v3 &middot; Built with care by indie devs.</p>
     </div>
   </footer>
 

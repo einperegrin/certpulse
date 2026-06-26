@@ -1,5 +1,5 @@
 {
-  "name": "certpulse",
+  "name": "sslert",
   "version": "0.4.1",
   "license": "AGPL-3.0",
   "private": true,
@@ -9,15 +9,15 @@
   ],
   "type": "module",
   "scripts": {
-    "dev:api": "npm run dev --workspace=@certpulse/api",
-    "dev:web": "npm run dev --workspace=@certpulse/web",
+    "dev:api": "npm run dev --workspace=@sslert/api",
+    "dev:web": "npm run dev --workspace=@sslert/web",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "test:e2e": "npm run test:e2e --workspace=@certpulse/web",
+    "test:e2e": "npm run test:e2e --workspace=@sslert/web",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "db:generate": "npm run db:generate --workspace=@certpulse/api",
-    "db:migrate": "npm run db:migrate --workspace=@certpulse/api"
+    "db:generate": "npm run db:generate --workspace=@sslert/api",
+    "db:migrate": "npm run db:migrate --workspace=@sslert/api"
   },
   "engines": {
     "node": ">=20"

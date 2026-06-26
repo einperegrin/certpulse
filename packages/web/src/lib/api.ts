@@ -1,7 +1,7 @@
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
-const TOKEN_STORAGE_KEY = "certpulse.token";
+const TOKEN_STORAGE_KEY = "sslert.token";
 // Same-tab token-change signal (storage event only fires cross-tab).
-const TOKEN_EVENT = "certpulse.tokenchange";
+const TOKEN_EVENT = "sslert.tokenchange";
 
 function readToken(): string {
   try {

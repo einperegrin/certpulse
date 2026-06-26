@@ -42,7 +42,7 @@ export interface AuditEntry {
  * encoding. Caller passes the `DB` so this is testable without a
  * global.
  *
- * Also bumps `certpulse_audit_log_writes_total{action, resource_type}`
+ * Also bumps `sslert_audit_log_writes_total{action, resource_type}`
  * so the Grafana "audit log activity" panel (v0.4) has a signal.
  * `action` is split on the first dot so "domain.create" becomes the
  * label "domain" — same convention the UI's action filter uses.
@@ -143,7 +143,7 @@ export function queryAudit(db: DB, q: AuditQuery = {}): { rows: AuditRow[]; tota
  *
  * ⚠️ This is the RETENTION helper — only the daily retention tick
  * should call it. It is exported (not internal) so a future
- * `certpulse audit prune --days N` CLI can wire to it, but no
+ * `sslert audit prune --days N` CLI can wire to it, but no
  * request-time code path should ever invoke it. Doing so would
  * silently delete audit history. (Copilot review: audit.ts:148 —
  * "pruneAuditLog is exported and can be called by non-retention

@@ -19,7 +19,7 @@ export default function Login() {
   const from = (location.state as { from?: string } | null)?.from ?? "/";
 
   React.useEffect(() => {
-    document.title = "Sign in · CertPulse";
+    document.title = "Sign in · SSLert";
   }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -40,7 +40,7 @@ export default function Login() {
       // Clear the token so the user can retry without seeing a stale header.
       setApiToken("");
       if (err instanceof ApiError && err.status === 401) {
-        setError("That token was rejected (401). Check `certpulse token list`.");
+        setError("That token was rejected (401). Check `sslert token list`.");
       } else if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -57,11 +57,11 @@ export default function Login() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-6 w-6 text-sky-600" />
-            <CardTitle className="text-lg">Sign in to CertPulse</CardTitle>
+            <CardTitle className="text-lg">Sign in to SSLert</CardTitle>
           </div>
           <p className="text-sm text-slate-500">
             Paste an API token created with{" "}
-            <code className="rounded bg-slate-100 px-1">certpulse token create</code>.
+            <code className="rounded bg-slate-100 px-1">sslert token create</code>.
           </p>
         </CardHeader>
         <CardContent>
