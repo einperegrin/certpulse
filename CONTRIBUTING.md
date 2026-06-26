@@ -32,9 +32,6 @@ and tag it as a feature request (the maintainer will apply the
 - Your proposed behaviour and any alternatives you considered
 - Whether you'd be willing to send a PR
 
-> ℹ️ SSLert is [open-core (AGPL v3)](./LICENSE). Features that clearly
-> belong to a future **commercial / cloud** tier may be redirected there.
-
 ## Submitting a pull request
 
 1. **Fork** the repo and create a branch from `main`:

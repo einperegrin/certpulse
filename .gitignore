@@ -17,3 +17,7 @@ data/
 .omo/
 test-results/
 playwright-report/
+
+# Internal docs (not for public repo)
+POC.md
+docs/internal/

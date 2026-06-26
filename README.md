@@ -322,5 +322,4 @@ PRs welcome! Open an issue first to discuss what you'd like to change.
 
 ## License
 
-Licensed under the [GNU Affero General Public License v3.0](./LICENSE).  
-If you'd like to use SSLert in a closed-source product, contact us for a commercial license.
+Licensed under the [GNU Affero General Public License v3.0](./LICENSE).
