@@ -92,14 +92,52 @@ against `/workspace/sslert` on 2026-06-17.
 ## [0.4.0] - 2026-06-14
 
 Backup/restore CLI (#13), OpenAPI 3.1 + Swagger UI (#14), Grafana
-dashboard (#15), and HMAC-signed outbound webhooks (#12). See
-`docs/v0.4-dashboard.md` for the user-facing summary.
+dashboard (#15), and HMAC-signed outbound webhooks (#12).
+
+### Highlights
+
+- **Backup & restore** — `npm run backup:create` produces a single
+  `.tar.gz` containing the SQLite database, a redacted copy of `.env`,
+  and a `manifest.json`. `backup:restore` rebuilds both with a single
+  command.
+- **OpenAPI 3.1 + Swagger UI** — `GET /api/openapi.json` exposes the full
+  schema; `GET /api/docs` renders the Swagger UI for interactive
+  exploration.
+- **Grafana dashboard** — a ready-to-import
+  `packages/api/grafana/sslert-dashboard.json` ships with the repo, plus
+  scrape configs for Prometheus.
+- **HMAC-signed webhooks** — every outbound webhook carries an
+  `X-SSLert-Signature: sha256=…` header so receivers can verify the
+  payload originated from your instance.
 
 ## [0.3.0] - 2026-06-10
 
 Observability & operations: pino structured logging, Prometheus `/metrics`,
 `/health` + `/health/ready` endpoints, rate-limiting, audit log table,
-graceful shutdown, and Docker hardening. See `docs/v0.3-dashboard.md`.
+graceful shutdown, and Docker hardening.
+
+### Highlights
+
+- **Structured logging** — pino with redaction of `*_KEY`, `*_SECRET`,
+  `*_TOKEN`, `*_PASSWORD`. `LOG_LEVEL=debug|info|warn|error|fatal`.
+- **Prometheus metrics** — `GET /metrics` exports HTTP request duration
+  histograms, check totals/result counters, alert-send totals per channel,
+  rate-limit hits, audit-log writes, and a `sslert_last_*_timestamp_seconds`
+  gauge for "when did we last successfully check / alert".
+- **Health endpoints** — `/health` (liveness) and `/health/ready`
+  (readiness, gated on DB + scheduler state).
+- **Rate limiting** — `RATE_LIMIT_PER_MINUTE` (default 100) per IP on
+  `/api/*`; `/health` and `/metrics` exempt.
+- **Audit log** — every mutation (`domain.create`, `domain.delete`,
+  `channel.upsert`, `token.create`, `token.revoke`, …) recorded with
+  actor + IP + request id; pruned after `AUDIT_LOG_RETENTION_DAYS`
+  (default 90).
+- **Graceful shutdown** — `SIGTERM`/`SIGINT` await `server.close()` and
+  install `uncaughtException` / `unhandledRejection` handlers so
+  in-flight requests drain before the container stops.
+- **Docker hardening** — read-only rootfs, `cap_drop: ALL` +
+  `no-new-privileges:true`, dedicated unprivileged UID 10001, healthchecks
+  on both services, no host port on the API (nginx reverse proxy only).
 
 ## [0.2.0] - 2026-06-09
 
